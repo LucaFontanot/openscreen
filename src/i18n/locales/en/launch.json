@@ -28,6 +28,10 @@
 		"useEditableCursor": "Use editable cursor",
 		"useSystemCursor": "Use system cursor"
 	},
+	"capture": {
+		"enableNativeCapture": "Enable native Windows capture (WGC)",
+		"disableNativeCapture": "Disable native Windows capture (use Electron fallback)"
+	},
 	"sourceSelector": {
 		"loading": "Loading sources...",
 		"screens": "Screens ({{count}})",

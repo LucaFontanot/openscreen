@@ -25,6 +25,8 @@ export interface UserPreferences {
 	exportFormat: ExportFormat;
 	/** Folder used for the most recent successful export, if any */
 	exportFolder: string | null;
+	/** Whether to use the native Windows Graphics Capture engine (Windows only) */
+	useNativeCapture: boolean;
 }
 
 const DEFAULT_PREFS: UserPreferences = {
@@ -33,6 +35,7 @@ const DEFAULT_PREFS: UserPreferences = {
 	exportQuality: "good",
 	exportFormat: "mp4",
 	exportFolder: null,
+	useNativeCapture: true,
 };
 
 function safeJsonParse(text: string | null): Record<string, unknown> | null {
@@ -83,6 +86,7 @@ export function loadUserPreferences(): UserPreferences {
 			typeof raw.exportFolder === "string" && raw.exportFolder.length > 0
 				? raw.exportFolder
 				: DEFAULT_PREFS.exportFolder,
+		useNativeCapture: raw.useNativeCapture === false ? false : DEFAULT_PREFS.useNativeCapture,
 	};
 }
 
