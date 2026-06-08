@@ -44,6 +44,7 @@ import {
 	type ExportQuality,
 	type ExportSettings,
 	GIF_SIZE_PRESETS,
+	FFmpegExporter,
 	GifExporter,
 	type GifFrameRate,
 	type GifSizePreset,
@@ -322,7 +323,7 @@ export default function VideoEditor() {
 	const [showAutoCaptionsDialog, setShowAutoCaptionsDialog] = useState(false);
 	const [captionWordsMin, setCaptionWordsMin] = useState(2);
 	const [captionWordsMax, setCaptionWordsMax] = useState(7);
-	const exporterRef = useRef<VideoExporter | null>(null);
+	const exporterRef = useRef<VideoExporter | FFmpegExporter | GifExporter | null>(null);
 
 	const annotationOnlyRegions = useMemo(
 		() => annotationRegions.filter((region) => region.type !== "blur"),
@@ -1924,10 +1925,10 @@ export default function VideoEditor() {
 						},
 					});
 
-					exporterRef.current = gifExporter as unknown as VideoExporter;
+					exporterRef.current = gifExporter;
 					const result = await gifExporter.export();
 
-					if (result.success && result.blob) {
+					if (result.success && result.type === "blob") {
 						const arrayBuffer = await result.blob.arrayBuffer();
 
 						if (result.warnings) {
@@ -1953,7 +1954,7 @@ export default function VideoEditor() {
 					} else {
 						const message = buildExportDiagnosticMessage({
 							formatLabel: "GIF",
-							reason: result.error || "GIF export failed",
+							reason: (!result.success ? result.error : null) || "GIF export failed",
 							sourcePath: videoSourcePath ?? videoPath,
 							width: settings.gifConfig.width,
 							height: settings.gifConfig.height,
@@ -1976,90 +1977,151 @@ export default function VideoEditor() {
 						aspectRatioValue,
 					});
 
-					const exporter = new VideoExporter({
-						videoUrl: videoPath,
-						webcamVideoUrl: webcamVideoPath || undefined,
-						width: exportWidth,
-						height: exportHeight,
-						frameRate: 60,
-						bitrate,
-						codec: "avc1.640033",
-						wallpaper,
-						zoomRegions,
-						trimRegions,
-						speedRegions,
-						showShadow: shadowIntensity > 0,
-						shadowIntensity,
-						showBlur,
-						motionBlurAmount,
-						borderRadius,
-						padding,
-						cropRegion,
-						cursorRecordingData,
-						cursorScale: effectiveShowCursor ? cursorSize : 0,
-						cursorSmoothing,
-						cursorMotionBlur,
-						cursorClickBounce,
-						cursorClipToBounds,
-						cursorTheme,
-						annotationRegions,
-						webcamLayoutPreset,
-						webcamMaskShape,
-						webcamMirrored,
-						webcamReactiveZoom,
-						webcamSizePreset,
-						webcamPosition,
-						previewWidth,
-						previewHeight,
-						cursorTelemetry,
-						cursorClickTimestamps,
-						onProgress: (progress: ExportProgress) => {
-							setExportProgress(progress);
-						},
-					});
+					// Check for FFmpeg native export availability (hardware-accelerated, much faster)
+					const ffmpegCheck = await FFmpegExporter.isAvailable();
 
-					exporterRef.current = exporter;
-					const result = await exporter.export();
+					if (ffmpegCheck.available) {
+						// ---- FFmpeg Native Export (fast, GPU-accelerated) ----
+						console.log(
+							`[Export] Using FFmpeg native export with encoder: ${ffmpegCheck.bestEncoder}`,
+						);
 
-					if (result.success && result.blob) {
-						const arrayBuffer = await result.blob.arrayBuffer();
-
-						if (result.warnings) {
-							for (const warning of result.warnings) {
-								toast.warning(warning);
-							}
-						}
-
-						const saveResult = await window.electronAPI.writeExportToPath(arrayBuffer, targetPath);
-
-						if (saveResult.success && saveResult.path) {
-							setUnsavedExport(null);
-							handleExportSaved("Video", saveResult.path);
-						} else {
-							setUnsavedExport({ arrayBuffer, fileName: targetFileName, format: "mp4" });
-							const message = buildSaveDiagnosticMessage(
-								"Video",
-								saveResult.message || "Failed to save video",
-							);
-							setExportError(message);
-							toast.error(message);
-						}
-					} else {
-						const message = buildExportDiagnosticMessage({
-							formatLabel: "Video",
-							reason: result.error || "Export failed",
-							sourcePath: videoSourcePath ?? videoPath,
+						const platform = await window.electronAPI.getPlatform();
+						const ffmpegExporter = new FFmpegExporter({
+							videoUrl: videoPath,
+							webcamVideoUrl: webcamVideoPath || undefined,
 							width: exportWidth,
 							height: exportHeight,
 							frameRate: 60,
-							codec: "avc1.640033",
 							bitrate,
+							wallpaper,
+							zoomRegions,
+							trimRegions,
+							speedRegions,
+							showShadow: shadowIntensity > 0,
+							shadowIntensity,
+							showBlur,
+							motionBlurAmount,
+							borderRadius,
+							padding,
+							cropRegion,
+							cursorRecordingData,
+							cursorScale: effectiveShowCursor ? cursorSize : 0,
+							cursorSmoothing,
+							cursorMotionBlur,
+							cursorClickBounce,
+							cursorClipToBounds,
+							cursorTheme,
+							annotationRegions,
+							webcamLayoutPreset,
+							webcamMaskShape,
+							webcamMirrored,
+							webcamReactiveZoom,
+							webcamSizePreset,
+							webcamPosition,
+							previewWidth,
+							previewHeight,
+							cursorTelemetry,
+							cursorClickTimestamps,
+							platform,
+							onProgress: (progress: ExportProgress) => {
+								setExportProgress(progress);
+							},
 						});
-						setExportError(message);
-						toast.error(message);
+
+						exporterRef.current = ffmpegExporter;
+						const result = await ffmpegExporter.export();
+
+						if (result.success && result.type === "native") {
+							// FFmpeg saved directly to disk via IPC — no blob to save
+							setUnsavedExport(null);
+							handleExportSaved("Video", result.path);
+						} else if (result.success && result.type === "blob") {
+							// Fallback: FFmpeg returned a blob instead
+							const arrayBuffer = await result.blob.arrayBuffer();
+							const saveResult = await window.electronAPI.writeExportToPath(arrayBuffer, targetPath);
+							if (saveResult.success && saveResult.path) {
+								setUnsavedExport(null);
+								handleExportSaved("Video", saveResult.path);
+							} else {
+								setUnsavedExport({ arrayBuffer, fileName: targetFileName, format: "mp4" });
+								setExportError(saveResult.message || "Failed to save video");
+								toast.error(saveResult.message || "Failed to save video");
+							}
+						} else if (result.error === "Export save canceled") {
+							toast.info("Export canceled");
+						} else {
+							setExportError(result.error || "FFmpeg export failed");
+							toast.error(result.error || "FFmpeg export failed");
+						}
+					} else {
+						// ---- WebCodecs Fallback (slower, no FFmpeg needed) ----
+						console.log("[Export] FFmpeg not available, using WebCodecs fallback");
+
+						const exporter = new VideoExporter({
+							videoUrl: videoPath,
+							webcamVideoUrl: webcamVideoPath || undefined,
+							width: exportWidth,
+							height: exportHeight,
+							frameRate: 60,
+							bitrate,
+							codec: "avc1.640033",
+							wallpaper,
+							zoomRegions,
+							trimRegions,
+							speedRegions,
+							showShadow: shadowIntensity > 0,
+							shadowIntensity,
+							showBlur,
+							motionBlurAmount,
+							borderRadius,
+							padding,
+							cropRegion,
+							cursorRecordingData,
+							cursorScale: effectiveShowCursor ? cursorSize : 0,
+							cursorSmoothing,
+							cursorMotionBlur,
+							cursorClickBounce,
+							cursorClipToBounds,
+							cursorTheme,
+							annotationRegions,
+							webcamLayoutPreset,
+							webcamMaskShape,
+							webcamMirrored,
+							webcamReactiveZoom,
+							webcamSizePreset,
+							webcamPosition,
+							previewWidth,
+							previewHeight,
+							cursorTelemetry,
+							cursorClickTimestamps,
+							onProgress: (progress: ExportProgress) => {
+								setExportProgress(progress);
+							},
+						});
+
+						exporterRef.current = exporter;
+						const result = await exporter.export();
+
+						if (result.success && result.type === "blob") {
+							const arrayBuffer = await result.blob.arrayBuffer();
+							const timestamp = Date.now();
+							const fileName = `export-${timestamp}.mp4`;
+							const saveResult = await window.electronAPI.writeExportToPath(arrayBuffer, targetPath);
+							if (saveResult.success && saveResult.path) {
+								setUnsavedExport(null);
+								handleExportSaved("Video", saveResult.path);
+							} else {
+								setUnsavedExport({ arrayBuffer, fileName, format: "mp4" });
+								setExportError(saveResult.message || "Failed to save video");
+								toast.error(saveResult.message || "Failed to save video");
+							}
+						} else if (!result.success) {
+							setExportError(result.error || "Export failed");
+							toast.error(result.error || "Export failed");
+						}
 					}
 				}
-
 				if (wasPlaying) {
 					videoPlaybackRef.current?.play();
 				}

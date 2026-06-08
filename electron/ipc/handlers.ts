@@ -369,7 +369,7 @@ async function getApprovedProjectSession(
 
 	let webcamVideoPath: string | undefined;
 	if (media.webcamVideoPath) {
-		webcamVideoPath = await approveReadableVideoPath(media.webcamVideoPath, trustedDirs);
+		webcamVideoPath = await approveReadableVideoPath(media.webcamVideoPath, trustedDirs) ?? undefined;
 		if (!webcamVideoPath) {
 			webcamVideoPath = await promptExternalVideoApproval(media.webcamVideoPath) ?? undefined;
 		}
@@ -2938,6 +2938,11 @@ export function registerIpcHandlers(
 				return { success: true, path: filePath };
 			} catch (error) {
 				console.error("Failed to write diagnostic file:", error);
+				return { success: false, error: String(error) };
+			}
+		},
+		);
+
 
 
 	// ---- Security Check for Native APIs ----
@@ -3217,6 +3222,7 @@ export function registerIpcHandlers(
 		} catch (error) {
 			return { success: false, error: String(error) };
 		}
+		});
 
 	registerNativeBridgeHandlers({
 		getPlatform: () => process.platform,

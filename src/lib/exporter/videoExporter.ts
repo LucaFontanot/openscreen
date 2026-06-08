@@ -171,7 +171,7 @@ export class VideoExporter {
 				lastError = normalizedError;
 
 				if (this.cancelled) {
-					return { success: false, error: "Export cancelled" };
+					return { success: false, error: "Export cancelled" } satisfies ExportResult;
 				}
 
 				if (normalizedError instanceof BackgroundLoadError) {
@@ -427,7 +427,7 @@ export class VideoExporter {
 			);
 
 			if (this.cancelled) {
-				return { success: false, error: "Export cancelled" };
+				return { success: false, error: "Export cancelled" } satisfies ExportResult;
 			}
 
 			if (this.fatalEncoderError) {
@@ -481,7 +481,7 @@ export class VideoExporter {
 			}
 
 			const blob = await muxer.finalize();
-			return { success: true, blob, warnings: warnings.length > 0 ? warnings : undefined };
+			return { success: true, type: "blob", blob };
 		} finally {
 			stopWebcamDecode = true;
 			webcamFrameQueue?.destroy();
@@ -659,7 +659,7 @@ export class VideoExporter {
 		return ["prefer-hardware", "prefer-software"];
 	}
 
-	private async trySourceCopyFastPath(videoInfo: { width: number; height: number }) {
+	private async trySourceCopyFastPath(videoInfo: { width: number; height: number }): Promise<ExportResult | null> {
 		const blockers = getSourceCopyFastPathBlockers(this.config, videoInfo);
 		if (blockers.length > 0) {
 			console.info("[VideoExporter] source-copy fast path disabled", {
@@ -680,7 +680,7 @@ export class VideoExporter {
 		}
 
 		if (this.cancelled) {
-			return { success: false, error: "Export cancelled" };
+			return { success: false, error: "Export cancelled" } satisfies ExportResult;
 		}
 
 		this.reportProgress({
@@ -697,6 +697,7 @@ export class VideoExporter {
 
 		return {
 			success: true,
+			type: "blob",
 			blob: sourceBlob.type ? sourceBlob : new Blob([sourceBlob], { type: "video/mp4" }),
 		} satisfies ExportResult;
 	}

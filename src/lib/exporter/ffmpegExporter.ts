@@ -18,12 +18,11 @@ import type {
 	WebcamSizePreset,
 	ZoomRegion,
 } from "@/components/video-editor/types";
+import type { CursorRecordingData } from "@/native/contracts";
 import { AsyncVideoFrameQueue } from "./asyncVideoFrameQueue";
 import { FrameRenderer } from "./frameRenderer";
 import { StreamingVideoDecoder } from "./streamingDecoder";
 import type { ExportProgress, ExportResult } from "./types";
-
-// BACKPRESSURE variables removed as they are no longer needed for VideoEncoder
 
 interface FFmpegExporterConfig {
 	videoUrl: string;
@@ -51,6 +50,17 @@ interface FFmpegExporterConfig {
 	previewWidth?: number;
 	previewHeight?: number;
 	cursorTelemetry?: import("@/components/video-editor/types").CursorTelemetryPoint[];
+	cursorRecordingData?: CursorRecordingData | null;
+	cursorScale?: number;
+	cursorSmoothing?: number;
+	cursorMotionBlur?: number;
+	cursorClickBounce?: number;
+	cursorClipToBounds?: boolean;
+	cursorTheme?: string;
+	webcamMirrored?: boolean;
+	webcamReactiveZoom?: boolean;
+	cursorClickTimestamps?: number[];
+	platform: string;
 	onProgress?: (progress: ExportProgress) => void;
 }
 
@@ -122,11 +132,20 @@ export class FFmpegExporter {
 				borderRadius: this.config.borderRadius,
 				padding: this.config.padding,
 				cropRegion: this.config.cropRegion,
+				cursorRecordingData: this.config.cursorRecordingData,
+				cursorScale: this.config.cursorScale,
+				cursorSmoothing: this.config.cursorSmoothing,
+				cursorMotionBlur: this.config.cursorMotionBlur,
+				cursorClickBounce: this.config.cursorClickBounce,
+				cursorClipToBounds: this.config.cursorClipToBounds,
+				cursorTheme: this.config.cursorTheme,
 				videoWidth: videoInfo.width,
 				videoHeight: videoInfo.height,
 				webcamSize: webcamInfo ? { width: webcamInfo.width, height: webcamInfo.height } : null,
 				webcamLayoutPreset: this.config.webcamLayoutPreset,
 				webcamMaskShape: this.config.webcamMaskShape,
+				webcamMirrored: this.config.webcamMirrored,
+				webcamReactiveZoom: this.config.webcamReactiveZoom,
 				webcamSizePreset: this.config.webcamSizePreset,
 				webcamPosition: this.config.webcamPosition,
 				annotationRegions: this.config.annotationRegions,
@@ -134,6 +153,8 @@ export class FFmpegExporter {
 				previewWidth: this.config.previewWidth,
 				previewHeight: this.config.previewHeight,
 				cursorTelemetry: this.config.cursorTelemetry,
+				cursorClickTimestamps: this.config.cursorClickTimestamps,
+				platform: this.config.platform,
 			});
 			this.renderer = renderer;
 			await renderer.initialize();
@@ -161,11 +182,11 @@ export class FFmpegExporter {
 			console.log(`[FFmpegExporter] Session started: ${this.sessionId}`);
 
 			// 5. Calculate total frames
-			const effectiveDuration = streamingDecoder.getEffectiveDuration(
+			const { effectiveDuration, totalFrames } = streamingDecoder.getExportMetrics(
+				this.config.frameRate,
 				this.config.trimRegions,
 				this.config.speedRegions,
 			);
-			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
 
 			console.log(
 				`[FFmpegExporter] Duration: ${effectiveDuration.toFixed(2)}s, Frames: ${totalFrames}`,

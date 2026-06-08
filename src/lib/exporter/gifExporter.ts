@@ -344,7 +344,7 @@ export class GifExporter {
 				this.gif!.render();
 			});
 
-			return { success: true, blob, warnings: warnings.length > 0 ? warnings : undefined };
+			return { success: true, type: "blob", blob };
 		} catch (error) {
 			if (error instanceof BackgroundLoadError) {
 				throw error;

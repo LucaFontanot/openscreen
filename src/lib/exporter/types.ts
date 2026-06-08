@@ -15,12 +15,22 @@ export interface ExportProgress {
 	renderProgress?: number; // 0-100, GIF render phase
 }
 
-export interface ExportResult {
-	success: boolean;
-	blob?: Blob;
-	error?: string;
-	warnings?: string[];
-}
+export type ExportResult =
+	| {
+			success: true;
+			type: "blob";
+			blob: Blob;
+			warnings?: string[];
+	  }
+	| {
+			success: true;
+			type: "native";
+			path: string;
+	  }
+	| {
+			success: false;
+			error: string;
+	  };
 
 export interface VideoFrameData {
 	frame: VideoFrame;
