@@ -292,6 +292,42 @@ async function finalizeRecordingFile(
 	return streamed;
 }
 
+/**
+ * When a video path is rejected because it falls outside trusted directories
+ * but the file actually exists on disk, prompt the user for explicit approval.
+ * Returns the approved path or null if the user declines or the file is invalid.
+ */
+async function promptExternalVideoApproval(rawPath?: string | null): Promise<string | null> {
+	const normalizedPath = normalizeVideoSourcePath(rawPath);
+	if (!normalizedPath || !hasAllowedImportVideoExtension(normalizedPath)) {
+		return null;
+	}
+
+	try {
+		const stats = await fs.stat(normalizedPath);
+		if (!stats.isFile()) return null;
+	} catch {
+		return null;
+	}
+
+	const { response } = await dialog.showMessageBox({
+		type: "question",
+		buttons: ["Trust This File", "Cancel"],
+		defaultId: 1,
+		title: "External Video Location",
+		message: `This project references a video outside the project directory:\n\n${normalizedPath}\n\nTrust this file location?`,
+		detail:
+			"For security, Openscreen requires permission to access video files outside the project folder.",
+	});
+
+	if (response === 0) {
+		approveFilePath(normalizedPath);
+		return normalizedPath;
+	}
+
+	return null;
+}
+
 async function getApprovedProjectSession(
 	project: unknown,
 	projectFilePath?: string,
@@ -320,16 +356,25 @@ async function getApprovedProjectSession(
 		trustedDirs.push(path.dirname(path.resolve(projectFilePath)));
 	}
 
-	const screenVideoPath = await approveReadableVideoPath(media.screenVideoPath, trustedDirs);
+	let screenVideoPath = await approveReadableVideoPath(media.screenVideoPath, trustedDirs);
+	if (!screenVideoPath) {
+		// Path may have been rejected because it falls outside trusted directories
+		// but the file itself could still be valid. Prompt the user to approve.
+		screenVideoPath = await promptExternalVideoApproval(media.screenVideoPath);
+	}
 	if (!screenVideoPath) {
 		throw new Error("Project references an invalid or unsupported screen video path");
 	}
 
-	const webcamVideoPath = media.webcamVideoPath
-		? await approveReadableVideoPath(media.webcamVideoPath, trustedDirs)
-		: undefined;
-	if (media.webcamVideoPath && !webcamVideoPath) {
-		throw new Error("Project references an invalid or unsupported webcam video path");
+	let webcamVideoPath: string | undefined;
+	if (media.webcamVideoPath) {
+		webcamVideoPath = await approveReadableVideoPath(media.webcamVideoPath, trustedDirs);
+		if (!webcamVideoPath) {
+			webcamVideoPath = await promptExternalVideoApproval(media.webcamVideoPath) ?? undefined;
+		}
+		if (!webcamVideoPath) {
+			throw new Error("Project references an invalid or unsupported webcam video path");
+		}
 	}
 
 	return webcamVideoPath
