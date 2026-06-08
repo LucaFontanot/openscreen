@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Clapperboard, Columns3, Languages, Rows3 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BsPauseCircle, BsPlayCircle, BsRecordCircle } from "react-icons/bs";
+import { BsPauseCircle, BsPlayCircle, BsRecordCircle, BsWindows } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
 import { FaFolderOpen } from "react-icons/fa6";
 import { FiMinus, FiX } from "react-icons/fi";
@@ -52,6 +52,7 @@ const ICON_CONFIG = {
 	webcamOn: { icon: MdVideocam, size: ICON_SIZE },
 	webcamOff: { icon: MdVideocamOff, size: ICON_SIZE },
 	cursor: { icon: MdMouse, size: ICON_SIZE },
+	nativeCapture: { icon: BsWindows, size: ICON_SIZE },
 	pause: { icon: BsPauseCircle, size: ICON_SIZE },
 	resume: { icon: BsPlayCircle, size: ICON_SIZE },
 	stop: { icon: FaRegStopCircle, size: ICON_SIZE },
@@ -126,6 +127,8 @@ export function LaunchWindow() {
 		setWebcamDeviceName,
 		cursorCaptureMode,
 		setCursorCaptureMode,
+		useNativeCapture,
+		setUseNativeCapture,
 	} = useScreenRecorder();
 
 	const showMicControls = microphoneEnabled && !recording;
@@ -143,6 +146,7 @@ export function LaunchWindow() {
 		() => loadUserPreferences().trayLayout,
 	);
 	const [supportsCursorModeToggle, setSupportsCursorModeToggle] = useState(false);
+	const [isOnWindows, setIsOnWindows] = useState(false);
 	const languageTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const languageMenuPanelRef = useRef<HTMLDivElement | null>(null);
 	const hudBarRef = useRef<HTMLDivElement | null>(null);
@@ -212,11 +216,13 @@ export function LaunchWindow() {
 			.then((platform) => {
 				if (!cancelled) {
 					setSupportsCursorModeToggle(platform === "win32" || platform === "darwin");
+					setIsOnWindows(platform === "win32");
 				}
 			})
 			.catch(() => {
 				if (!cancelled) {
 					setSupportsCursorModeToggle(false);
+					setIsOnWindows(false);
 				}
 			});
 
@@ -839,6 +845,23 @@ export function LaunchWindow() {
 								"cursor",
 								cursorCaptureMode === "editable-overlay" ? "text-green-400" : "text-white/40",
 							)}
+						</button>
+					)}
+					{isOnWindows && (
+						<button
+							data-testid="launch-native-capture-button"
+							className={`${hudIconBtnClasses} ${
+								useNativeCapture ? "drop-shadow-[0_0_4px_rgba(74,222,128,0.4)]" : ""
+							}`}
+							onClick={() => !recording && setUseNativeCapture(!useNativeCapture)}
+							disabled={recording}
+							title={
+								useNativeCapture
+									? t("capture.disableNativeCapture")
+									: t("capture.enableNativeCapture")
+							}
+						>
+							{getIcon("nativeCapture", useNativeCapture ? "text-green-400" : "text-white/40")}
 						</button>
 					)}
 				</div>

@@ -29,6 +29,8 @@ export interface UserPreferences {
 	exportFormat: ExportFormat;
 	/** Folder used for the most recent successful export, if any */
 	exportFolder: string | null;
+	/** Whether to use the native Windows Graphics Capture engine (Windows only) */
+	useNativeCapture: boolean;
 	/** Folder of the most recently opened project, if any */
 	projectFolder: string | null;
 	/** Recording HUD control layout */
@@ -41,6 +43,7 @@ export const DEFAULT_PREFS: UserPreferences = {
 	exportQuality: DEFAULT_EXPORT_SETTINGS.quality,
 	exportFormat: DEFAULT_EXPORT_SETTINGS.format,
 	exportFolder: null,
+	useNativeCapture: true,
 	projectFolder: null,
 	trayLayout: "horizontal",
 };
@@ -91,6 +94,7 @@ export function loadUserPreferences(): UserPreferences {
 			typeof raw.exportFolder === "string" && raw.exportFolder.length > 0
 				? raw.exportFolder
 				: DEFAULT_PREFS.exportFolder,
+		useNativeCapture: raw.useNativeCapture === false ? false : DEFAULT_PREFS.useNativeCapture,
 		projectFolder:
 			typeof raw.projectFolder === "string" && raw.projectFolder.length > 0
 				? raw.projectFolder
