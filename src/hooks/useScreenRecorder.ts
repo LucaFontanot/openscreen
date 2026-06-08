@@ -13,6 +13,7 @@ import {
 } from "@/lib/nativeWindowsRecording";
 import type { CursorCaptureMode, RecordedVideoAssetInput } from "@/lib/recordingSession";
 import { requestCameraAccess } from "@/lib/requestCameraAccess";
+import { loadUserPreferences, saveUserPreferences } from "@/lib/userPreferences";
 import { createRecorderHandle, type RecorderHandle } from "./recorderHandle";
 
 const TARGET_FRAME_RATE = 60;
@@ -72,6 +73,8 @@ type UseScreenRecorderReturn = {
 	setWebcamEnabled: (enabled: boolean) => Promise<boolean>;
 	cursorCaptureMode: CursorCaptureMode;
 	setCursorCaptureMode: (mode: CursorCaptureMode) => void;
+	useNativeCapture: boolean;
+	setUseNativeCapture: (enabled: boolean) => void;
 };
 
 type NativeWindowsRecordingHandle = {
@@ -100,6 +103,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
 	const [webcamEnabled, setWebcamEnabledState] = useState(false);
 	const [cursorCaptureMode, setCursorCaptureMode] = useState<CursorCaptureMode>("editable-overlay");
+	const [useNativeCapture, setUseNativeCaptureState] = useState<boolean>(
+		() => loadUserPreferences().useNativeCapture,
+	);
+	const setUseNativeCapture = useCallback((enabled: boolean) => {
+		setUseNativeCaptureState(enabled);
+		saveUserPreferences({ useNativeCapture: enabled });
+	}, []);
 	const screenRecorder = useRef<RecorderHandle | null>(null);
 	const webcamRecorder = useRef<RecorderHandle | null>(null);
 	const nativeWindowsRecording = useRef<NativeWindowsRecordingHandle | null>(null);
@@ -1144,7 +1154,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				return;
 			}
 
-			if (await startNativeWindowsRecordingIfAvailable(selectedSource, countdownRunToken)) {
+			if (
+				useNativeCapture &&
+				(await startNativeWindowsRecordingIfAvailable(selectedSource, countdownRunToken))
+			) {
 				return;
 			}
 			if (await startNativeMacRecordingIfAvailable(selectedSource, countdownRunToken)) {
@@ -1168,42 +1181,40 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					audio: systemAudioEnabled,
 				} as DisplayMediaStreamOptions);
 			} else {
-				const videoConstraints = {
-					mandatory: {
-						chromeMediaSource: CHROME_MEDIA_SOURCE,
-						chromeMediaSourceId: selectedSource.id,
-						maxWidth: TARGET_WIDTH,
-						maxHeight: TARGET_HEIGHT,
-						maxFrameRate: TARGET_FRAME_RATE,
-						minFrameRate: MIN_FRAME_RATE,
-					},
-				};
+				// Use getDisplayMedia for video so the cursor: "never" constraint is
+				// honoured on all platforms via setDisplayMediaRequestHandler (main.ts).
+				// System audio is captured separately via getUserMedia because the
+				// handler only supplies loopback audio on Windows.
+				const screenVideoStream = await navigator.mediaDevices.getDisplayMedia({
+					video: {
+						cursor: cursorCaptureMode === "editable-overlay" ? "never" : "always",
+						width: { max: TARGET_WIDTH },
+						height: { max: TARGET_HEIGHT },
+						frameRate: { ideal: TARGET_FRAME_RATE, min: MIN_FRAME_RATE },
+					} as MediaTrackConstraints,
+					audio: false,
+				} as DisplayMediaStreamOptions);
 
 				if (systemAudioEnabled) {
 					try {
-						screenMediaStream = await navigator.mediaDevices.getUserMedia({
+						const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
 							audio: {
 								mandatory: {
 									chromeMediaSource: CHROME_MEDIA_SOURCE,
 									chromeMediaSourceId: selectedSource.id,
 								},
 							},
-							video: videoConstraints,
+							video: false,
 						} as unknown as MediaStreamConstraints);
+						for (const track of audioOnlyStream.getAudioTracks()) {
+							screenVideoStream.addTrack(track);
+						}
 					} catch (audioErr) {
 						console.warn("System audio capture failed, falling back to video-only:", audioErr);
 						toast.error(t("recording.systemAudioUnavailable"));
-						screenMediaStream = await navigator.mediaDevices.getUserMedia({
-							audio: false,
-							video: videoConstraints,
-						} as unknown as MediaStreamConstraints);
 					}
-				} else {
-					screenMediaStream = await navigator.mediaDevices.getUserMedia({
-						audio: false,
-						video: videoConstraints,
-					} as unknown as MediaStreamConstraints);
 				}
+				screenMediaStream = screenVideoStream;
 			}
 			screenStream.current = screenMediaStream;
 
@@ -1682,5 +1693,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		setWebcamEnabled,
 		cursorCaptureMode,
 		setCursorCaptureMode,
+		useNativeCapture,
+		setUseNativeCapture,
 	};
 }
