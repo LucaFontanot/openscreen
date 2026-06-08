@@ -292,6 +292,50 @@ interface Window {
 			projectState: unknown;
 			logs: string[];
 		}) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+
+		// ---- FFmpeg Native Export ----
+		ffmpegGetCapabilities: () => Promise<{
+			available: boolean;
+			encoders: string[];
+			bestEncoder: string | null;
+			path: string | null;
+		}>;
+		ffmpegExportStart: (config: {
+			width: number;
+			height: number;
+			frameRate: number;
+			encoder: string;
+			bitrate: number;
+			audioSourcePath?: string;
+			hasAudio?: boolean;
+		}) => Promise<{
+			success: boolean;
+			sessionId?: string;
+			error?: string;
+		}>;
+		ffmpegExportFrame: (
+			sessionId: string,
+			frameData: ArrayBuffer,
+		) => Promise<{
+			success: boolean;
+			backpressure?: boolean;
+			frameCount?: number;
+			error?: string;
+		}>;
+		ffmpegExportFinish: (
+			sessionId: string,
+			fileName: string,
+		) => Promise<{
+			success: boolean;
+			path?: string;
+			message?: string;
+			canceled?: boolean;
+			error?: string;
+		}>;
+		ffmpegExportCancel: (sessionId: string) => Promise<{
+			success: boolean;
+			error?: string;
+		}>;
 	};
 }
 

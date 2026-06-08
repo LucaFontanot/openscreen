@@ -66,3 +66,10 @@ result-*
 
 # Auto-caption model + ORT wasm — regenerated at build by scripts/fetch-caption-model.mjs
 /caption-assets/
+
+# Native downloads (FFmpeg binaries)
+vendor/
+
+# AI workspaces
+.qwen
+.gemini

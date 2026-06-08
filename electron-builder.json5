@@ -43,6 +43,11 @@
     {
       "from": "caption-assets",
       "to": "caption-assets"
+    },
+    {
+      "from": "vendor/ffmpeg",
+      "to": "ffmpeg",
+      "filter": ["ffmpeg.exe", "ffprobe.exe", "ffmpeg", "ffprobe"]
     }
   ],
 
