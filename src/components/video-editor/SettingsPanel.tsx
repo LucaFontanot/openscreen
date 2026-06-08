@@ -11,6 +11,7 @@ import {
 	LayoutPanelTop,
 	Lock,
 	MousePointerClick,
+	Music,
 	Palette,
 	SlidersHorizontal,
 	Sparkles,
@@ -74,11 +75,14 @@ import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
 import type {
 	AnnotationRegion,
 	AnnotationType,
+	AudioHooksConfig,
+	AudioHookType,
 	BlurData,
 	CropRegion,
 	FigureData,
 	PlaybackSpeed,
 	Rotation3DPreset,
+	TrimRegion,
 	WebcamLayoutPreset,
 	WebcamMaskShape,
 	WebcamSizePreset,
@@ -87,6 +91,7 @@ import type {
 	ZoomFocusMode,
 } from "./types";
 import {
+	DEFAULT_AUDIO_HOOKS,
 	DEFAULT_WEBCAM_MIRRORED,
 	DEFAULT_WEBCAM_REACTIVE_ZOOM,
 	MAX_ZOOM_SCALE,
@@ -96,6 +101,7 @@ import {
 	ZOOM_DEPTH_SCALES,
 } from "./types";
 import { getFocusBoundsForScale } from "./videoPlayback/focusUtils";
+import { AudioSettingsPanel } from "./AudioSettingsPanel";
 
 function CustomSpeedInput({
 	value,
@@ -348,6 +354,32 @@ interface SettingsPanelProps {
 	onCursorThemeChange?: (theme: string) => void;
 	hasCursorData?: boolean;
 	showCursorSettings?: boolean;
+	// Audio
+	backgroundMusicPath?: string | null;
+	backgroundMusicVolume?: number;
+	backgroundMusicFadeIn?: number;
+	backgroundMusicFadeOut?: number;
+	onBackgroundMusicPick?: () => void;
+	onBackgroundMusicRemove?: () => void;
+	onBackgroundMusicVolumeChange?: (volume: number) => void;
+	onBackgroundMusicVolumeCommit?: () => void;
+	onBackgroundMusicFadeInChange?: (value: number) => void;
+	onBackgroundMusicFadeInCommit?: () => void;
+	onBackgroundMusicFadeOutChange?: (value: number) => void;
+	onBackgroundMusicFadeOutCommit?: () => void;
+	onMusicTrackSelect?: (trackUrl: string) => void;
+	backgroundMusicRegions?: TrimRegion[];
+	selectedMusicRegionId?: string | null;
+	onSelectedMusicRegionDelete?: (id: string) => void;
+	audioHooks?: AudioHooksConfig;
+	audioHooksVolume?: number;
+	onAudioHooksChange?: (hooks: AudioHooksConfig) => void;
+	onAudioHooksVolumeChange?: (volume: number) => void;
+	onAudioHooksVolumeCommit?: () => void;
+	hookSoundLayers?: Record<AudioHookType, string[]>;
+	onHookTrackAdd?: (hook: AudioHookType, trackUrl: string) => void;
+	onHookTrackRemove?: (hook: AudioHookType, trackUrl: string) => void;
+	onHookTimelineAdd?: (hook: AudioHookType, trackUrl: string, trackName: string) => void;
 }
 
 export default SettingsPanel;
@@ -361,7 +393,7 @@ const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
 	{ depth: 6, label: "5×" },
 ];
 
-type SettingsPanelMode = "background" | "effects" | "layout" | "cursor" | "export" | "timeline";
+type SettingsPanelMode = "background" | "effects" | "layout" | "cursor" | "audio" | "export" | "timeline";
 
 const MP4_EXPORT_SHORT_SIDES = {
 	medium: 720,
@@ -484,6 +516,35 @@ export function SettingsPanel({
 	onCursorThemeChange,
 	hasCursorData = false,
 	showCursorSettings = true,
+	// Audio
+	backgroundMusicPath = null,
+	backgroundMusicVolume = 0.35,
+	backgroundMusicFadeIn = 0,
+	backgroundMusicFadeOut = 0,
+	onBackgroundMusicPick,
+	onBackgroundMusicRemove,
+	onBackgroundMusicVolumeChange,
+	onBackgroundMusicVolumeCommit,
+	onBackgroundMusicFadeInChange,
+	onBackgroundMusicFadeInCommit,
+	onBackgroundMusicFadeOutChange,
+	onBackgroundMusicFadeOutCommit,
+	onMusicTrackSelect,
+	backgroundMusicRegions = [],
+	audioHooks = DEFAULT_AUDIO_HOOKS,
+	audioHooksVolume = 0.35,
+	onAudioHooksChange,
+	onAudioHooksVolumeChange,
+	onAudioHooksVolumeCommit,
+	hookSoundLayers = {
+		zoom: ["/audio/hooks/zoom.wav"],
+		trim: ["/audio/hooks/trim.wav"],
+		speed: ["/audio/hooks/speed.mp3"],
+		annotation: ["/audio/hooks/annotation.mp3"],
+		blur: ["/audio/hooks/blur.wav"],
+	},
+	onHookTrackAdd,
+	onHookTrackRemove,
 }: SettingsPanelProps) {
 	const t = useScopedT("settings");
 	const [activePanelMode, setActivePanelMode] = useState<SettingsPanelMode>("background");
@@ -651,6 +712,7 @@ export function SettingsPanel({
 		{ id: "effects", label: t("effects.title"), icon: SlidersHorizontal },
 		{ id: "layout", label: t("layout.title"), icon: LayoutPanelTop, disabled: !hasWebcam },
 		{ id: "timeline", label: t("timeline.title"), icon: Brackets },
+		{ id: "audio", label: t("audio.title"), icon: Music },
 		...(hasCursorPanel
 			? [
 					{
@@ -1865,6 +1927,45 @@ export function SettingsPanel({
 									</AccordionContent>
 								</AccordionItem>
 							)}
+
+								{activePanelMode === "audio" && (
+									<AccordionItem value="audio" className="editor-panel-section px-3">
+										<AccordionTrigger className="py-2.5 hover:no-underline">
+											<div className="flex items-center gap-2">
+												<Music className="w-4 h-4 text-[#34B27B]" />
+												<span className="text-sm font-medium text-slate-200">
+													{t("audio.title")}
+												</span>
+											</div>
+										</AccordionTrigger>
+										<AccordionContent className="pb-2">
+											<AudioSettingsPanel
+												backgroundMusicPath={backgroundMusicPath}
+												backgroundMusicVolume={backgroundMusicVolume}
+												backgroundMusicFadeIn={backgroundMusicFadeIn}
+												backgroundMusicFadeOut={backgroundMusicFadeOut}
+												onBackgroundMusicPick={onBackgroundMusicPick}
+												onBackgroundMusicRemove={onBackgroundMusicRemove}
+												onBackgroundMusicVolumeChange={onBackgroundMusicVolumeChange}
+												onBackgroundMusicVolumeCommit={onBackgroundMusicVolumeCommit}
+												onBackgroundMusicFadeInChange={onBackgroundMusicFadeInChange}
+												onBackgroundMusicFadeInCommit={onBackgroundMusicFadeInCommit}
+												onBackgroundMusicFadeOutChange={onBackgroundMusicFadeOutChange}
+												onBackgroundMusicFadeOutCommit={onBackgroundMusicFadeOutCommit}
+												onMusicTrackSelect={onMusicTrackSelect}
+												backgroundMusicRegions={backgroundMusicRegions}
+												audioHooks={audioHooks}
+												audioHooksVolume={audioHooksVolume}
+												onAudioHooksChange={onAudioHooksChange}
+												onAudioHooksVolumeChange={onAudioHooksVolumeChange}
+												onAudioHooksVolumeCommit={onAudioHooksVolumeCommit}
+												hookSoundLayers={hookSoundLayers}
+												onHookTrackAdd={onHookTrackAdd}
+												onHookTrackRemove={onHookTrackRemove}
+											/>
+										</AccordionContent>
+									</AccordionItem>
+								)}
 						</Accordion>
 					)}
 				</div>

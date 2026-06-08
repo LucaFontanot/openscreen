@@ -1,6 +1,9 @@
 import type {
 	AnnotationRegion,
+	AudioHooksConfig,
+	AudioHookType,
 	CropRegion,
+	HookRegion,
 	SpeedRegion,
 	TrimRegion,
 	WebcamLayoutPreset,
@@ -19,10 +22,20 @@ import type { ExportConfig, ExportProgress, ExportResult } from "./types";
 
 const ENCODER_STALL_TIMEOUT_MS = 15_000;
 const ENCODER_FLUSH_TIMEOUT_MS = 20_000;
+const HOOK_TRIGGER_LEAD_MS = 140;
 
 export interface VideoExporterConfig extends ExportConfig {
 	videoUrl: string;
 	webcamVideoUrl?: string;
+	backgroundAudioUrl?: string;
+	backgroundAudioRegions?: TrimRegion[];
+	backgroundAudioVolume?: number;
+	backgroundMusicFadeIn?: number;
+	backgroundMusicFadeOut?: number;
+	audioHooks?: AudioHooksConfig;
+	audioHooksVolume?: number;
+	hookSoundLayers?: Partial<Record<AudioHookType, string[]>>;
+	hookRegions?: HookRegion[];
 	wallpaper: string;
 	zoomRegions: ZoomRegion[];
 	trimRegions?: TrimRegion[];
@@ -278,7 +291,11 @@ export class VideoExporter {
 				console.warn("[VideoExporter] No supported audio export codec, exporting video-only.");
 			}
 
-			const hasAudio = Boolean(audioExportCodec);
+			const hasAudio =
+				Boolean(audioExportCodec) ||
+				Boolean(this.config.backgroundAudioUrl) ||
+				Boolean(this.config.audioHooks && Object.values(this.config.audioHooks).some(Boolean)) ||
+				Boolean(this.config.hookRegions && this.config.hookRegions.length > 0);
 			const muxer = new VideoMuxer(this.config, hasAudio, audioExportCodec?.muxerCodec);
 			this.muxer = muxer;
 			await muxer.initialize();
@@ -288,6 +305,7 @@ export class VideoExporter {
 				this.config.trimRegions,
 				this.config.speedRegions,
 			);
+			const readEndSec = Math.max(videoInfo.duration, videoInfo.streamDuration ?? 0) + 0.5;
 
 			const frameDuration = 1_000_000 / this.config.frameRate;
 			let frameIndex = 0;
@@ -463,19 +481,46 @@ export class VideoExporter {
 				phase: "finalizing",
 			});
 
-			if (hasAudio && audioExportCodec && !this.cancelled) {
+			if (hasAudio && !this.cancelled) {
 				const demuxer = streamingDecoder.getDemuxer();
 				if (demuxer) {
 					console.log("[VideoExporter] Processing audio track...");
 					this.audioProcessor = new AudioProcessor();
+
+					const hookEventTimes: Partial<Record<AudioHookType, number[]>> = {
+						zoom: this.config.zoomRegions.map((region) =>
+							Math.max(0, region.startMs - HOOK_TRIGGER_LEAD_MS),
+						),
+						trim: (this.config.trimRegions ?? []).map((region) =>
+							Math.max(0, region.startMs - HOOK_TRIGGER_LEAD_MS),
+						),
+						speed: (this.config.speedRegions ?? []).map((region) =>
+							Math.max(0, region.startMs - HOOK_TRIGGER_LEAD_MS),
+						),
+						annotation: (this.config.annotationRegions ?? []).map((region) =>
+							Math.max(0, region.startMs - HOOK_TRIGGER_LEAD_MS),
+						),
+						blur: [], // Blur regions are handled as annotation regions with blur type
+					};
+
 					await this.audioProcessor.process(
 						demuxer,
 						muxer,
 						this.config.videoUrl,
 						this.config.trimRegions,
 						this.config.speedRegions,
-						videoInfo.duration,
-						audioExportCodec,
+						this.config.backgroundAudioUrl,
+						this.config.backgroundAudioRegions,
+						this.config.backgroundAudioVolume ?? 0.35,
+						this.config.backgroundMusicFadeIn ?? 0,
+						this.config.backgroundMusicFadeOut ?? 0,
+						this.config.audioHooks,
+						this.config.audioHooksVolume ?? 0.35,
+						this.config.hookSoundLayers,
+						this.config.hookRegions,
+						hookEventTimes,
+						readEndSec,
+						audioExportCodec ?? undefined,
 					);
 				}
 			}

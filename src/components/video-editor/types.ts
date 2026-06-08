@@ -214,6 +214,32 @@ export interface TrimRegion {
 	endMs: number;
 }
 
+export type AudioHookType = "zoom" | "trim" | "speed" | "annotation" | "blur";
+
+export interface HookRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+	soundUrl: string;
+	label?: string;
+	hookType?: AudioHookType;
+}
+
+export type AudioHooksConfig = Record<AudioHookType, boolean>;
+
+export const DEFAULT_AUDIO_HOOKS: AudioHooksConfig = {
+	zoom: false,
+	trim: false,
+	speed: false,
+	annotation: false,
+	blur: false,
+};
+
+export const DEFAULT_BACKGROUND_MUSIC_VOLUME = 0.35;
+export const DEFAULT_BACKGROUND_MUSIC_FADE_IN = 0;
+export const DEFAULT_BACKGROUND_MUSIC_FADE_OUT = 0;
+export const DEFAULT_AUDIO_HOOKS_VOLUME = 0.35;
+
 export type AnnotationType = "text" | "image" | "figure" | "blur";
 
 export type ArrowDirection =

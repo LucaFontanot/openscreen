@@ -6,7 +6,10 @@ import {
 } from "@/components/video-editor/editorDefaults";
 import type {
 	AnnotationRegion,
+	AudioHooksConfig,
+	AudioHookType,
 	CropRegion,
+	HookRegion,
 	SpeedRegion,
 	TrimRegion,
 	WebcamLayoutPreset,
@@ -16,6 +19,11 @@ import type {
 	ZoomRegion,
 } from "@/components/video-editor/types";
 import {
+	DEFAULT_AUDIO_HOOKS,
+	DEFAULT_AUDIO_HOOKS_VOLUME,
+	DEFAULT_BACKGROUND_MUSIC_FADE_IN,
+	DEFAULT_BACKGROUND_MUSIC_FADE_OUT,
+	DEFAULT_BACKGROUND_MUSIC_VOLUME,
 	DEFAULT_CROP_REGION,
 	DEFAULT_WEBCAM_MIRRORED,
 	DEFAULT_WEBCAM_REACTIVE_ZOOM,
@@ -49,6 +57,16 @@ export interface EditorState {
 	webcamReactiveZoom: boolean;
 	webcamSizePreset: WebcamSizePreset;
 	webcamPosition: WebcamPosition | null;
+	// Audio
+	backgroundMusicPath: string | null;
+	backgroundMusicRegions: TrimRegion[];
+	backgroundMusicVolume: number;
+	backgroundMusicFadeIn: number;
+	backgroundMusicFadeOut: number;
+	audioHooks: AudioHooksConfig;
+	audioHooksVolume: number;
+	hookRegions: HookRegion[];
+	hookSoundLayers: Record<AudioHookType, string[]>;
 }
 
 export const INITIAL_EDITOR_STATE: EditorState = {
@@ -73,6 +91,22 @@ export const INITIAL_EDITOR_STATE: EditorState = {
 	webcamReactiveZoom: DEFAULT_WEBCAM_REACTIVE_ZOOM,
 	webcamSizePreset: DEFAULT_WEBCAM_SETTINGS.sizePreset,
 	webcamPosition: DEFAULT_WEBCAM_SETTINGS.position,
+	// Audio
+	backgroundMusicPath: null,
+	backgroundMusicRegions: [],
+	backgroundMusicVolume: DEFAULT_BACKGROUND_MUSIC_VOLUME,
+	backgroundMusicFadeIn: DEFAULT_BACKGROUND_MUSIC_FADE_IN,
+	backgroundMusicFadeOut: DEFAULT_BACKGROUND_MUSIC_FADE_OUT,
+	audioHooks: DEFAULT_AUDIO_HOOKS,
+	audioHooksVolume: DEFAULT_AUDIO_HOOKS_VOLUME,
+	hookRegions: [],
+	hookSoundLayers: {
+		zoom: ["/audio/hooks/zoom.wav"],
+		trim: ["/audio/hooks/trim.wav"],
+		speed: ["/audio/hooks/speed.mp3"],
+		annotation: ["/audio/hooks/annotation.mp3"],
+		blur: ["/audio/hooks/blur.wav"],
+	},
 };
 
 type StateUpdate = Partial<EditorState> | ((prev: EditorState) => Partial<EditorState>);

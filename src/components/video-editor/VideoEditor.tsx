@@ -23,6 +23,7 @@ import {
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { INITIAL_EDITOR_STATE, useEditorHistory } from "@/hooks/useEditorHistory";
+import { useAudioPreview } from "@/hooks/useAudioPreview";
 import { type Locale } from "@/i18n/config";
 import { getAvailableLocales, getLocaleName } from "@/i18n/loader";
 import {
@@ -210,6 +211,15 @@ export default function VideoEditor() {
 		webcamReactiveZoom,
 		webcamSizePreset,
 		webcamPosition,
+		backgroundMusicPath,
+		backgroundMusicRegions,
+		backgroundMusicVolume,
+		backgroundMusicFadeIn,
+		backgroundMusicFadeOut,
+		audioHooks,
+		audioHooksVolume,
+		hookRegions,
+		hookSoundLayers,
 	} = editorState;
 
 	// Non-undoable state
@@ -233,6 +243,8 @@ export default function VideoEditor() {
 	const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [selectedBlurId, setSelectedBlurId] = useState<string | null>(null);
+	const [selectedMusicRegionId, setSelectedMusicRegionId] = useState<string | null>(null);
+	const [, setSelectedHookRegionId] = useState<string | null>(null);
 	const [isExporting, setIsExporting] = useState(false);
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
@@ -300,6 +312,8 @@ export default function VideoEditor() {
 	const nextZoomIdRef = useRef(1);
 	const nextTrimIdRef = useRef(1);
 	const nextSpeedIdRef = useRef(1);
+	const nextMusicTrimIdRef = useRef(1);
+	const nextHookRegionIdRef = useRef(1);
 
 	const { shortcuts, isMac } = useShortcuts();
 	// Windows recordings include captured cursor assets. macOS hides the system
@@ -333,6 +347,27 @@ export default function VideoEditor() {
 		() => annotationRegions.filter((region) => region.type === "blur"),
 		[annotationRegions],
 	);
+
+	const audioPreview = useAudioPreview({
+		pushState,
+		currentTimeRef,
+		durationRef,
+		nextMusicTrimIdRef,
+		nextHookRegionIdRef,
+		audioHooks,
+		audioHooksVolume,
+		hookRegions,
+		zoomRegions,
+		trimRegions,
+		speedRegions,
+		annotationOnlyRegions,
+		blurRegions,
+		currentTime,
+		isPlaying,
+		selectedMusicRegionId,
+		onSelectMusicRegion: setSelectedMusicRegionId,
+		onSelectHookRegion: setSelectedHookRegionId,
+	});
 
 	const currentProjectMedia = useMemo<ProjectMedia | null>(() => {
 		const screenVideoPath = videoSourcePath ?? (videoPath ? fromFileUrl(videoPath) : null);
@@ -2095,6 +2130,15 @@ export default function VideoEditor() {
 							previewHeight,
 							cursorTelemetry,
 							cursorClickTimestamps,
+							backgroundAudioUrl: backgroundMusicPath || undefined,
+							backgroundAudioRegions: backgroundMusicRegions.length > 0 ? backgroundMusicRegions : undefined,
+							backgroundAudioVolume: backgroundMusicVolume,
+							backgroundMusicFadeIn,
+							backgroundMusicFadeOut,
+							audioHooks,
+							audioHooksVolume,
+							hookSoundLayers: audioPreview.hookSoundLayers,
+							hookRegions,
 							onProgress: (progress: ExportProgress) => {
 								setExportProgress(progress);
 							},
@@ -2899,6 +2943,32 @@ export default function VideoEditor() {
 											hasNativeCursorRecordingData(cursorRecordingData)
 										}
 										showCursorSettings={showCursorSettings}
+										// Audio
+										backgroundMusicPath={backgroundMusicPath}
+										backgroundMusicVolume={backgroundMusicVolume}
+										backgroundMusicFadeIn={backgroundMusicFadeIn}
+										backgroundMusicFadeOut={backgroundMusicFadeOut}
+										onBackgroundMusicPick={audioPreview.handlePickBackgroundMusic}
+										onBackgroundMusicRemove={audioPreview.handleRemoveBackgroundMusic}
+										onBackgroundMusicVolumeChange={(v) => updateState({ backgroundMusicVolume: v })}
+										onBackgroundMusicVolumeCommit={commitState}
+										onBackgroundMusicFadeInChange={(v) => updateState({ backgroundMusicFadeIn: v })}
+										onBackgroundMusicFadeInCommit={commitState}
+										onBackgroundMusicFadeOutChange={(v) => updateState({ backgroundMusicFadeOut: v })}
+										onBackgroundMusicFadeOutCommit={commitState}
+										onMusicTrackSelect={audioPreview.handleMusicTrackSelect}
+										backgroundMusicRegions={backgroundMusicRegions}
+										selectedMusicRegionId={selectedMusicRegionId}
+										onSelectedMusicRegionDelete={audioPreview.handleMusicRegionDelete}
+										audioHooks={audioHooks}
+										audioHooksVolume={audioHooksVolume}
+										onAudioHooksChange={(hooks) => pushState({ audioHooks: hooks })}
+										onAudioHooksVolumeChange={(v) => updateState({ audioHooksVolume: v })}
+										onAudioHooksVolumeCommit={commitState}
+										hookSoundLayers={hookSoundLayers}
+										onHookTrackAdd={audioPreview.handleHookTrackAdd}
+										onHookTrackRemove={audioPreview.handleHookTrackRemove}
+										onHookTimelineAdd={audioPreview.handleHookTimelineAdd}
 									/>
 								</div>
 							</div>

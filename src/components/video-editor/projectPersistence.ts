@@ -15,11 +15,19 @@ import {
 } from "./editorDefaults";
 import {
 	type AnnotationRegion,
+	type AudioHooksConfig,
+	type AudioHookType,
 	type CropRegion,
+	type HookRegion,
 	clampPlaybackSpeed,
 	DEFAULT_ANNOTATION_POSITION,
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
+	DEFAULT_AUDIO_HOOKS,
+	DEFAULT_AUDIO_HOOKS_VOLUME,
+	DEFAULT_BACKGROUND_MUSIC_FADE_IN,
+	DEFAULT_BACKGROUND_MUSIC_FADE_OUT,
+	DEFAULT_BACKGROUND_MUSIC_VOLUME,
 	DEFAULT_BLUR_BLOCK_SIZE,
 	DEFAULT_BLUR_DATA,
 	DEFAULT_BLUR_FREEHAND_POINTS,
@@ -92,6 +100,16 @@ export interface ProjectEditorState {
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
 	cursorTheme: string;
+	// Audio
+	backgroundMusicPath?: string | null;
+	backgroundMusicRegions?: TrimRegion[];
+	backgroundMusicVolume?: number;
+	backgroundMusicFadeIn?: number;
+	backgroundMusicFadeOut?: number;
+	audioHooks?: AudioHooksConfig;
+	audioHooksVolume?: number;
+	hookRegions?: HookRegion[];
+	hookSoundLayers?: Record<AudioHookType, string[]>;
 }
 
 export interface EditorProjectData {
@@ -530,7 +548,82 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			editor.gifSizePreset === "original"
 				? editor.gifSizePreset
 				: DEFAULT_GIF_SETTINGS.sizePreset,
+		// Audio
+		backgroundMusicPath:
+			typeof editor.backgroundMusicPath === "string" ? editor.backgroundMusicPath : null,
+		backgroundMusicRegions: Array.isArray(editor.backgroundMusicRegions)
+			? editor.backgroundMusicRegions
+					.filter((region): region is TrimRegion => Boolean(region && typeof region.id === "string"))
+					.map((region) => ({
+						id: region.id,
+						startMs: isFiniteNumber(region.startMs) ? Math.max(0, Math.round(region.startMs)) : 0,
+						endMs: isFiniteNumber(region.endMs) ? Math.max(0, Math.round(region.endMs)) : 0,
+					}))
+			: [],
+		backgroundMusicVolume: isFiniteNumber(editor.backgroundMusicVolume)
+			? clamp(editor.backgroundMusicVolume, 0, 1)
+			: DEFAULT_BACKGROUND_MUSIC_VOLUME,
+		backgroundMusicFadeIn: isFiniteNumber(editor.backgroundMusicFadeIn)
+			? Math.max(0, editor.backgroundMusicFadeIn)
+			: DEFAULT_BACKGROUND_MUSIC_FADE_IN,
+		backgroundMusicFadeOut: isFiniteNumber(editor.backgroundMusicFadeOut)
+			? Math.max(0, editor.backgroundMusicFadeOut)
+			: DEFAULT_BACKGROUND_MUSIC_FADE_OUT,
+		audioHooks:
+			typeof editor.audioHooks === "object" && editor.audioHooks !== null
+				? {
+						zoom: Boolean((editor.audioHooks as AudioHooksConfig).zoom),
+						trim: Boolean((editor.audioHooks as AudioHooksConfig).trim),
+						speed: Boolean((editor.audioHooks as AudioHooksConfig).speed),
+						annotation: Boolean((editor.audioHooks as AudioHooksConfig).annotation),
+						blur: Boolean((editor.audioHooks as AudioHooksConfig).blur),
+					}
+				: DEFAULT_AUDIO_HOOKS,
+		audioHooksVolume: isFiniteNumber(editor.audioHooksVolume)
+			? clamp(editor.audioHooksVolume, 0, 1)
+			: DEFAULT_AUDIO_HOOKS_VOLUME,
+		hookRegions: Array.isArray(editor.hookRegions)
+			? editor.hookRegions
+					.filter((region): region is HookRegion => Boolean(region && typeof region.id === "string"))
+					.map((region) => ({
+						id: region.id,
+						startMs: isFiniteNumber(region.startMs) ? Math.max(0, Math.round(region.startMs)) : 0,
+						endMs: isFiniteNumber(region.endMs) ? Math.max(0, Math.round(region.endMs)) : 0,
+						soundUrl: typeof region.soundUrl === "string" ? region.soundUrl : "",
+						label: typeof region.label === "string" ? region.label : undefined,
+						hookType:
+							region.hookType === "zoom" ||
+							region.hookType === "trim" ||
+							region.hookType === "speed" ||
+							region.hookType === "annotation" ||
+							region.hookType === "blur"
+								? region.hookType
+								: undefined,
+					}))
+			: [],
+		hookSoundLayers:
+			typeof editor.hookSoundLayers === "object" && editor.hookSoundLayers !== null
+				? {
+						zoom: arrayOfStrings((editor.hookSoundLayers as Record<string, unknown>).zoom) || ["/audio/hooks/zoom.wav"],
+						trim: arrayOfStrings((editor.hookSoundLayers as Record<string, unknown>).trim) || ["/audio/hooks/trim.wav"],
+						speed: arrayOfStrings((editor.hookSoundLayers as Record<string, unknown>).speed) || ["/audio/hooks/speed.mp3"],
+						annotation: arrayOfStrings((editor.hookSoundLayers as Record<string, unknown>).annotation) || ["/audio/hooks/annotation.mp3"],
+						blur: arrayOfStrings((editor.hookSoundLayers as Record<string, unknown>).blur) || ["/audio/hooks/blur.wav"],
+					}
+				: {
+						zoom: ["/audio/hooks/zoom.wav"],
+						trim: ["/audio/hooks/trim.wav"],
+						speed: ["/audio/hooks/speed.mp3"],
+						annotation: ["/audio/hooks/annotation.mp3"],
+						blur: ["/audio/hooks/blur.wav"],
+					},
 	};
+}
+
+function arrayOfStrings(value: unknown): string[] | null {
+	if (!Array.isArray(value)) return null;
+	const filtered = value.filter((v): v is string => typeof v === "string");
+	return filtered.length > 0 ? filtered : null;
 }
 
 export function createProjectData(

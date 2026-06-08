@@ -1,11 +1,32 @@
 import { WebDemuxer } from "web-demuxer";
-import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
+import type {
+	AudioHooksConfig,
+	AudioHookType,
+	HookRegion,
+	SpeedRegion,
+	TrimRegion,
+} from "@/components/video-editor/types";
 import type { ExportAudioMuxerCodec, VideoMuxer } from "./muxer";
 
 const AUDIO_BITRATE = 128_000;
 const DECODE_BACKPRESSURE_LIMIT = 20;
 const MIN_SPEED_REGION_DELTA_MS = 0.0001;
-const SEEK_TIMEOUT_MS = 5_000;
+
+const HOOK_FREQUENCIES: Record<AudioHookType, number> = {
+	zoom: 860,
+	trim: 240,
+	speed: 520,
+	annotation: 700,
+	blur: 310,
+};
+
+const HOOK_DURATIONS: Record<AudioHookType, number> = {
+	zoom: 0.08,
+	trim: 0.06,
+	speed: 0.06,
+	annotation: 0.07,
+	blur: 0.08,
+};
 
 export interface ExportAudioCodec {
 	encoderCodec: string;
@@ -210,8 +231,9 @@ export class AudioProcessor {
 	}
 
 	/**
-	 * Two modes: no speed regions uses the fast WebCodecs trim-only pipeline; speed
-	 * regions use the pitch-preserving rendered timeline pipeline.
+	 * Audio export has two modes:
+	 * 1) no speed regions, background audio, or hooks -> fast WebCodecs trim-only pipeline
+	 * 2) speed regions, background audio, or hooks present -> pitch-preserving rendered timeline pipeline
 	 */
 	async process(
 		demuxer: WebDemuxer,
@@ -219,8 +241,18 @@ export class AudioProcessor {
 		videoUrl: string,
 		trimRegions: TrimRegion[] | undefined,
 		speedRegions: SpeedRegion[] | undefined,
-		validatedDurationSec: number,
-		exportCodec: ExportAudioCodec,
+		backgroundAudioUrl?: string,
+		backgroundAudioRegions?: TrimRegion[],
+		backgroundAudioVolume = 0.35,
+		backgroundAudioFadeIn = 0,
+		backgroundAudioFadeOut = 0,
+		audioHooks?: AudioHooksConfig,
+		audioHooksVolume = 0.35,
+		hookSoundLayers?: Partial<Record<AudioHookType, string[]>>,
+		hookRegions?: HookRegion[],
+		hookEventTimes?: Partial<Record<AudioHookType, number[]>>,
+		readEndSec?: number,
+		exportCodec?: ExportAudioCodec,
 	): Promise<void> {
 		const sortedTrims = trimRegions ? [...trimRegions].sort((a, b) => a.startMs - b.startMs) : [];
 		const sortedSpeedRegions = speedRegions
@@ -229,25 +261,33 @@ export class AudioProcessor {
 					.sort((a, b) => a.startMs - b.startMs)
 			: [];
 
-		// Speed edits need timeline playback to preserve pitch.
-		if (sortedSpeedRegions.length > 0) {
+		const hasAudioHooks = Boolean(audioHooks && Object.values(audioHooks).some(Boolean));
+		const hasHookRegions = Boolean(hookRegions && hookRegions.length > 0);
+
+		// Speed edits, background overlays, and hook SFX all require timeline-rendered audio.
+		if (sortedSpeedRegions.length > 0 || backgroundAudioUrl || hasAudioHooks || hasHookRegions) {
 			const renderedAudioBlob = await this.renderPitchPreservedTimelineAudio(
 				videoUrl,
 				sortedTrims,
 				sortedSpeedRegions,
-				validatedDurationSec,
+				backgroundAudioUrl,
+				backgroundAudioRegions ?? [],
+				backgroundAudioVolume,
+				backgroundAudioFadeIn,
+				backgroundAudioFadeOut,
+				audioHooks,
+				audioHooksVolume,
+				hookSoundLayers,
+				hookRegions,
+				hookEventTimes,
 			);
-			if (!this.cancelled && renderedAudioBlob.size > 0) {
+			if (!this.cancelled) {
 				await this.muxRenderedAudioBlob(renderedAudioBlob, muxer, exportCodec);
 				return;
 			}
-			return;
 		}
 
-		// No speed edits: demux/decode/encode with trim timestamp remap. The +0.5s mirrors
-		// streamingDecoder.decodeAll's read window so both paths read the same distance past
-		// the validated duration boundary.
-		const readEndSec = validatedDurationSec + 0.5;
+		// No speed edits: keep the original demux/decode/encode path with trim timestamp remap.
 		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec, exportCodec);
 	}
 
@@ -401,19 +441,36 @@ export class AudioProcessor {
 		);
 	}
 
-	// Speed-aware path mirroring preview semantics (trim skipping + playbackRate). Relies on
-	// browser media playback to preserve pitch and avoid the chipmunk effect.
+	// Speed-aware path that mirrors preview semantics (trim skipping + playbackRate regions)
+	// and also mixes in background music and hook SFX. Relies on browser media playback to
+	// preserve pitch and avoid the chipmunk effect.
 	private async renderPitchPreservedTimelineAudio(
 		videoUrl: string,
 		trimRegions: TrimRegion[],
 		speedRegions: SpeedRegion[],
-		validatedDurationSec: number,
+		backgroundAudioUrl?: string,
+		backgroundAudioRegions: TrimRegion[] = [],
+		backgroundAudioVolume = 0.35,
+		backgroundAudioFadeIn = 0,
+		backgroundAudioFadeOut = 0,
+		audioHooks?: AudioHooksConfig,
+		audioHooksVolume = 0.35,
+		hookSoundLayers?: Partial<Record<AudioHookType, string[]>>,
+		hookRegions: HookRegion[] = [],
+		hookEventTimes?: Partial<Record<AudioHookType, number[]>>,
 	): Promise<Blob> {
-		const media = document.createElement("audio");
-		media.src = videoUrl;
-		media.preload = "auto";
+		const sourceMedia = document.createElement("audio");
+		sourceMedia.src = videoUrl;
+		sourceMedia.preload = "auto";
 
-		const pitchMedia = media as HTMLMediaElement & {
+		const backgroundMedia = backgroundAudioUrl ? document.createElement("audio") : null;
+		if (backgroundMedia) {
+			backgroundMedia.src = backgroundAudioUrl ?? "";
+			backgroundMedia.preload = "auto";
+			backgroundMedia.loop = true;
+		}
+
+		const pitchMedia = sourceMedia as HTMLMediaElement & {
 			preservesPitch?: boolean;
 			mozPreservesPitch?: boolean;
 			webkitPreservesPitch?: boolean;
@@ -422,54 +479,182 @@ export class AudioProcessor {
 		pitchMedia.mozPreservesPitch = true;
 		pitchMedia.webkitPreservesPitch = true;
 
-		await this.waitForLoadedMetadata(media);
+		await this.waitForLoadedMetadata(sourceMedia);
+		if (backgroundMedia) {
+			await this.waitForLoadedMetadata(backgroundMedia);
+		}
 		if (this.cancelled) {
 			throw new Error("Export cancelled");
 		}
 
 		const audioContext = new AudioContext();
-		const sourceNode = audioContext.createMediaElementSource(media);
+		const sourceNode = audioContext.createMediaElementSource(sourceMedia);
+		const sourceGainNode = audioContext.createGain();
 		const destinationNode = audioContext.createMediaStreamDestination();
-		sourceNode.connect(destinationNode);
+		sourceGainNode.gain.value = 1;
+		sourceNode.connect(sourceGainNode);
+		sourceGainNode.connect(destinationNode);
 
+		const backgroundNode = backgroundMedia
+			? audioContext.createMediaElementSource(backgroundMedia)
+			: null;
+		const backgroundGainNode = backgroundNode ? audioContext.createGain() : null;
+		if (backgroundGainNode) {
+			backgroundGainNode.gain.value = 0;
+		}
+		if (backgroundNode && backgroundGainNode) {
+			backgroundNode.connect(backgroundGainNode);
+			backgroundGainNode.connect(destinationNode);
+		}
+
+		const { recorder, recordedBlobPromise } = this.startAudioRecording(destinationNode.stream);
 		let rafId: number | null = null;
-		let recorder: MediaRecorder | null = null;
-		let recordedBlobPromise: Promise<Blob> | null = null;
+		let previousTimeMs = 0;
+		const activeHookNodes: Array<{
+			media: HTMLAudioElement;
+			node: MediaElementAudioSourceNode;
+			gain: GainNode;
+			endTimeMs?: number;
+		}> = [];
+		const sortedHookRegions = [...hookRegions].sort((a, b) => a.startMs - b.startMs);
+
+		const hasAnyHook = Boolean(audioHooks && Object.values(audioHooks).some(Boolean));
+		const hasHookClipRegions = sortedHookRegions.length > 0;
+
+		const disconnectHookNode = (entry: {
+			media: HTMLAudioElement;
+			node: MediaElementAudioSourceNode;
+			gain: GainNode;
+		}) => {
+			entry.media.pause();
+			entry.node.disconnect();
+			entry.gain.disconnect();
+		};
+
+		const playHookSound = (hook: AudioHookType) => {
+			if (!hasAnyHook || !audioHooks?.[hook]) {
+				return;
+			}
+
+			if (audioHooksVolume <= 0) {
+				return;
+			}
+
+			const fileUrls = hookSoundLayers?.[hook] ?? [];
+			if (fileUrls.length > 0) {
+				fileUrls.forEach((fileUrl) => {
+					const media = new Audio(fileUrl);
+					media.preload = "auto";
+					const node = audioContext.createMediaElementSource(media);
+					const gain = audioContext.createGain();
+					gain.gain.value = Math.min(1, Math.max(0, audioHooksVolume));
+					node.connect(gain);
+					gain.connect(destinationNode);
+					const entry = { media, node, gain };
+					activeHookNodes.push(entry);
+
+					void media.play().catch(() => undefined);
+					media.addEventListener(
+						"ended",
+						() => {
+							disconnectHookNode(entry);
+							const index = activeHookNodes.indexOf(entry);
+							if (index >= 0) {
+								activeHookNodes.splice(index, 1);
+							}
+						},
+						{ once: true },
+					);
+				});
+				return;
+			}
+
+			const oscillator = audioContext.createOscillator();
+			const gain = audioContext.createGain();
+			const now = audioContext.currentTime;
+			const peak = Math.min(0.22, Math.max(0, audioHooksVolume * 0.22));
+			if (peak <= 0) {
+				return;
+			}
+			const duration = HOOK_DURATIONS[hook] ?? 0.07;
+
+			oscillator.type = hook === "zoom" || hook === "annotation" ? "triangle" : "sine";
+			oscillator.frequency.value = HOOK_FREQUENCIES[hook] ?? 440;
+
+			gain.gain.setValueAtTime(0.0001, now);
+			gain.gain.linearRampToValueAtTime(peak, now + 0.012);
+			gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+			oscillator.connect(gain);
+			gain.connect(destinationNode);
+
+			oscillator.start(now);
+			oscillator.stop(now + duration + 0.01);
+		};
+
+		const playHookClipRegion = (region: HookRegion) => {
+			if (!region.soundUrl) {
+				return;
+			}
+
+			if (audioHooksVolume <= 0) {
+				return;
+			}
+
+			const media = new Audio(region.soundUrl);
+			media.preload = "auto";
+			const node = audioContext.createMediaElementSource(media);
+			const gain = audioContext.createGain();
+			gain.gain.value = Math.min(1, Math.max(0, audioHooksVolume));
+			node.connect(gain);
+			gain.connect(destinationNode);
+			const entry = { media, node, gain, endTimeMs: region.endMs };
+			activeHookNodes.push(entry);
+
+			void media.play().catch(() => {
+				disconnectHookNode(entry);
+				const index = activeHookNodes.indexOf(entry);
+				if (index >= 0) {
+					activeHookNodes.splice(index, 1);
+				}
+			});
+
+			media.addEventListener(
+				"ended",
+				() => {
+					disconnectHookNode(entry);
+					const index = activeHookNodes.indexOf(entry);
+					if (index >= 0) {
+						activeHookNodes.splice(index, 1);
+					}
+				},
+				{ once: true },
+			);
+		};
+
+		const hasBackgroundRegions = backgroundAudioRegions.length > 0;
+		const isBackgroundActiveAt = (timeMs: number) => {
+			if (!hasBackgroundRegions) {
+				return true;
+			}
+			return backgroundAudioRegions.some(
+				(region) => timeMs >= region.startMs && timeMs < region.endMs,
+			);
+		};
 
 		try {
 			if (audioContext.state === "suspended") {
 				await audioContext.resume();
 			}
 
-			// Skip initial trim region(s) before recording so the first rAF frames don't
-			// capture trimmed audio. Loops to handle back-to-back/overlapping trims at t=0.
-			const effectiveEnd = validatedDurationSec;
-			let startPosition = 0;
-			for (let i = 0; i <= trimRegions.length; i++) {
-				const activeTrim = this.findActiveTrimRegion(startPosition * 1000, trimRegions);
-				if (!activeTrim) break;
-				startPosition = activeTrim.endMs / 1000;
-				if (startPosition >= effectiveEnd) break;
+			await this.seekTo(sourceMedia, 0);
+			previousTimeMs = sourceMedia.currentTime * 1000;
+			await sourceMedia.play();
+
+			if (backgroundMedia) {
+				await this.seekTo(backgroundMedia, 0);
+				await backgroundMedia.play();
 			}
-
-			if (startPosition >= effectiveEnd) {
-				// Everything is trimmed; return a silent blob.
-				return new Blob([], { type: "audio/webm" });
-			}
-
-			await this.seekTo(media, startPosition);
-
-			// Set initial playback rate for the starting position.
-			const initialSpeedRegion = this.findActiveSpeedRegion(startPosition * 1000, speedRegions);
-			if (initialSpeedRegion) {
-				media.playbackRate = initialSpeedRegion.speed;
-			}
-
-			// Start recording only after seeking past trims.
-			const recording = this.startAudioRecording(destinationNode.stream);
-			recorder = recording.recorder;
-			recordedBlobPromise = recording.recordedBlobPromise;
-			await media.play();
 
 			await new Promise<void>((resolve, reject) => {
 				const cleanup = () => {
@@ -477,8 +662,8 @@ export class AudioProcessor {
 						cancelAnimationFrame(rafId);
 						rafId = null;
 					}
-					media.removeEventListener("error", onError);
-					media.removeEventListener("ended", onEnded);
+					sourceMedia.removeEventListener("error", onError);
+					sourceMedia.removeEventListener("ended", onEnded);
 				};
 
 				const onError = () => {
@@ -498,68 +683,81 @@ export class AudioProcessor {
 						return;
 					}
 
-					// Stop at validated duration; media.duration can be inflated by bad
-					// container metadata.
-					if (media.currentTime >= validatedDurationSec) {
-						media.pause();
-						cleanup();
-						resolve();
-						return;
+					const currentTimeMs = sourceMedia.currentTime * 1000;
+					const crossed = (timeMs: number) => timeMs > previousTimeMs && timeMs <= currentTimeMs;
+					const crossedPlayable = (timeMs: number) =>
+						crossed(timeMs) && !this.isInTrimRegion(timeMs, trimRegions);
+
+					if (backgroundGainNode) {
+						let bgGain = isBackgroundActiveAt(currentTimeMs)
+							? Math.min(1, Math.max(0, backgroundAudioVolume))
+							: 0;
+						if (bgGain > 0) {
+							const fadeInMs = backgroundAudioFadeIn * 1000;
+							if (fadeInMs > 0 && currentTimeMs < fadeInMs) {
+								bgGain *= currentTimeMs / fadeInMs;
+							}
+							const fadeOutMs = backgroundAudioFadeOut * 1000;
+							if (fadeOutMs > 0) {
+								const remainingMs = sourceMedia.duration * 1000 - currentTimeMs;
+								if (remainingMs < fadeOutMs) {
+									bgGain *= Math.max(0, remainingMs / fadeOutMs);
+								}
+							}
+						}
+						backgroundGainNode.gain.value = bgGain;
 					}
 
-					const currentTimeMs = media.currentTime * 1000;
+					for (let i = activeHookNodes.length - 1; i >= 0; i -= 1) {
+						const node = activeHookNodes[i];
+						if (node.endTimeMs !== undefined && currentTimeMs >= node.endTimeMs) {
+							disconnectHookNode(node);
+							activeHookNodes.splice(i, 1);
+						}
+					}
+
+					if (hasAnyHook && hookEventTimes) {
+						(Object.keys(HOOK_FREQUENCIES) as AudioHookType[]).forEach((hook) => {
+							if (!audioHooks?.[hook]) {
+								return;
+							}
+							const events = hookEventTimes[hook] ?? [];
+							if (events.some((timeMs) => crossedPlayable(timeMs))) {
+								playHookSound(hook);
+							}
+						});
+					}
+
+					if (hasHookClipRegions) {
+						sortedHookRegions.forEach((region) => {
+							if (crossedPlayable(region.startMs)) {
+								playHookClipRegion(region);
+							}
+						});
+					}
+
 					const activeTrimRegion = this.findActiveTrimRegion(currentTimeMs, trimRegions);
 
-					if (activeTrimRegion && !media.paused && !media.ended) {
+					if (activeTrimRegion && !sourceMedia.paused && !sourceMedia.ended) {
 						const skipToTime = activeTrimRegion.endMs / 1000;
-						if (skipToTime >= media.duration || skipToTime >= validatedDurationSec) {
-							media.pause();
+						if (skipToTime >= sourceMedia.duration) {
+							sourceMedia.pause();
 							cleanup();
 							resolve();
 							return;
 						}
-						// Pause recording during the seek so we don't capture silence/noise.
-						media.pause();
-						if (recorder?.state === "recording") recorder.pause();
-						const onSeeked = () => {
-							clearTimeout(seekTimer);
-							if (this.cancelled) {
-								cleanup();
-								resolve();
-								return;
-							}
-							if (recorder?.state === "paused") recorder.resume();
-							media
-								.play()
-								.then(() => {
-									if (!this.cancelled) rafId = requestAnimationFrame(tick);
-								})
-								.catch((err) => {
-									cleanup();
-									reject(
-										new Error(
-											`Failed to resume playback after trim seek: ${err instanceof Error ? err.message : String(err)}`,
-										),
-									);
-								});
-						};
-						const seekTimer = window.setTimeout(() => {
-							media.removeEventListener("seeked", onSeeked);
-							cleanup();
-							reject(new Error("Audio seek timed out while skipping trim region"));
-						}, SEEK_TIMEOUT_MS);
-						media.addEventListener("seeked", onSeeked, { once: true });
-						media.currentTime = skipToTime;
-						return;
+						sourceMedia.currentTime = skipToTime;
+						previousTimeMs = activeTrimRegion.endMs;
+					} else {
+						const activeSpeedRegion = this.findActiveSpeedRegion(currentTimeMs, speedRegions);
+						const playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+						if (Math.abs(sourceMedia.playbackRate - playbackRate) > 0.0001) {
+							sourceMedia.playbackRate = playbackRate;
+						}
+						previousTimeMs = currentTimeMs;
 					}
 
-					const activeSpeedRegion = this.findActiveSpeedRegion(currentTimeMs, speedRegions);
-					const playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
-					if (Math.abs(media.playbackRate - playbackRate) > 0.0001) {
-						media.playbackRate = playbackRate;
-					}
-
-					if (!media.paused && !media.ended) {
+					if (!sourceMedia.paused && !sourceMedia.ended) {
 						rafId = requestAnimationFrame(tick);
 					} else {
 						cleanup();
@@ -567,31 +765,46 @@ export class AudioProcessor {
 					}
 				};
 
-				media.addEventListener("error", onError, { once: true });
-				media.addEventListener("ended", onEnded, { once: true });
+				sourceMedia.addEventListener("error", onError, { once: true });
+				sourceMedia.addEventListener("ended", onEnded, { once: true });
 				rafId = requestAnimationFrame(tick);
 			});
 		} finally {
 			if (rafId !== null) {
 				cancelAnimationFrame(rafId);
 			}
-			media.pause();
-			if (recorder && recorder.state !== "inactive") {
+			sourceMedia.pause();
+			if (backgroundMedia) {
+				backgroundMedia.pause();
+			}
+			activeHookNodes.forEach(({ media, node, gain }) => {
+				media.pause();
+				media.src = "";
+				node.disconnect();
+				gain.disconnect();
+			});
+			if (recorder.state !== "inactive") {
 				recorder.stop();
 			}
 			destinationNode.stream.getTracks().forEach((track) => track.stop());
 			sourceNode.disconnect();
+			sourceGainNode.disconnect();
+			if (backgroundNode) {
+				backgroundNode.disconnect();
+			}
+			if (backgroundGainNode) {
+				backgroundGainNode.disconnect();
+			}
 			destinationNode.disconnect();
 			await audioContext.close();
-			media.src = "";
-			media.load();
+			sourceMedia.src = "";
+			sourceMedia.load();
+			if (backgroundMedia) {
+				backgroundMedia.src = "";
+				backgroundMedia.load();
+			}
 		}
 
-		if (!recordedBlobPromise) {
-			// Either an early return fired or startAudioRecording set this before playback
-			// resolved. Reaching here means that broke; fail loud rather than return silence.
-			throw new Error("Audio recorder finished without assigning recordedBlobPromise");
-		}
 		const recordedBlob = await recordedBlobPromise;
 		if (this.cancelled) {
 			throw new Error("Export cancelled");
@@ -599,11 +812,11 @@ export class AudioProcessor {
 		return recordedBlob;
 	}
 
-	// Demux the rendered speed-adjusted blob and feed its chunks into the MP4 muxer.
+	// Demuxes the rendered speed-adjusted blob and feeds encoded chunks into the MP4 muxer.
 	private async muxRenderedAudioBlob(
 		blob: Blob,
 		muxer: VideoMuxer,
-		exportCodec: ExportAudioCodec,
+		exportCodec?: ExportAudioCodec,
 	): Promise<void> {
 		if (this.cancelled) return;
 

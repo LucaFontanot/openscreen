@@ -115,6 +115,47 @@ function hasAllowedImportVideoExtension(filePath: string): boolean {
 	return ALLOWED_IMPORT_VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
 
+const ALLOWED_IMPORT_AUDIO_EXTENSIONS = new Set([
+	".mp3",
+	".wav",
+	".m4a",
+	".aac",
+	".ogg",
+	".flac",
+	".webm",
+]);
+
+function hasAllowedImportAudioExtension(filePath: string): boolean {
+	return ALLOWED_IMPORT_AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+async function approveReadableAudioPath(filePath?: string | null): Promise<string | null> {
+	const normalizedPath = normalizeVideoSourcePath(filePath);
+	if (!normalizedPath) {
+		return null;
+	}
+
+	if (isPathAllowed(normalizedPath)) {
+		return normalizedPath;
+	}
+
+	if (!hasAllowedImportAudioExtension(normalizedPath)) {
+		return null;
+	}
+
+	try {
+		const stats = await fs.stat(normalizedPath);
+		if (!stats.isFile()) {
+			return null;
+		}
+	} catch {
+		return null;
+	}
+
+	approveFilePath(normalizedPath);
+	return normalizedPath;
+}
+
 function runProcess(
 	command: string,
 	args: string[],
@@ -2538,6 +2579,51 @@ export function registerIpcHandlers(
 			};
 		}
 	});
+
+		ipcMain.handle("open-audio-file-picker", async () => {
+			try {
+				const dialogOptions = buildDialogOptions(
+					{
+						title: "Select audio file",
+						defaultPath: app.getPath("music"),
+						filters: [
+							{
+								name: "Audio Files",
+								extensions: ["mp3", "wav", "m4a", "aac", "ogg", "flac", "webm"],
+							},
+							{ name: "All Files", extensions: ["*"] },
+						],
+						properties: ["openFile"],
+					},
+					getMainWindow(),
+				);
+				const result = await dialog.showOpenDialog(dialogOptions);
+
+				if (result.canceled || result.filePaths.length === 0) {
+					return { success: false, canceled: true };
+				}
+
+				const approvedPath = await approveReadableAudioPath(result.filePaths[0]);
+				if (!approvedPath) {
+					return {
+						success: false,
+						message: "Selected file is not a supported audio file",
+					};
+				}
+
+				return {
+					success: true,
+					path: approvedPath,
+				};
+			} catch (error) {
+				console.error("Failed to open audio file picker:", error);
+				return {
+					success: false,
+					message: "Failed to open audio file picker",
+					error: String(error),
+				};
+			}
+		});
 
 	ipcMain.handle("reveal-in-folder", async (_, filePath: string) => {
 		try {
