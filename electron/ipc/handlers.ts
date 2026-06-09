@@ -28,7 +28,6 @@ import {
 	type RecordingSession,
 	type StoreRecordedSessionInput,
 } from "../../src/lib/recordingSession";
-import { buildFFmpegArgs, getFFmpegCapabilities, getFFmpegPath } from "../ffmpeg/ffmpegManager";
 import type {
 	CursorRecordingData,
 	CursorRecordingSample,
@@ -36,6 +35,7 @@ import type {
 	ProjectFileResult,
 	ProjectPathResult,
 } from "../../src/native/contracts";
+import { buildFFmpegArgs, getFFmpegCapabilities, getFFmpegPath } from "../ffmpeg/ffmpegManager";
 import { mainT } from "../i18n";
 import { RECORDINGS_DIR } from "../main";
 import { createCursorRecordingSession } from "../native-bridge/cursor/recording/factory";
@@ -410,9 +410,10 @@ async function getApprovedProjectSession(
 
 	let webcamVideoPath: string | undefined;
 	if (media.webcamVideoPath) {
-		webcamVideoPath = await approveReadableVideoPath(media.webcamVideoPath, trustedDirs) ?? undefined;
+		webcamVideoPath =
+			(await approveReadableVideoPath(media.webcamVideoPath, trustedDirs)) ?? undefined;
 		if (!webcamVideoPath) {
-			webcamVideoPath = await promptExternalVideoApproval(media.webcamVideoPath) ?? undefined;
+			webcamVideoPath = (await promptExternalVideoApproval(media.webcamVideoPath)) ?? undefined;
 		}
 		if (!webcamVideoPath) {
 			throw new Error("Project references an invalid or unsupported webcam video path");
@@ -2580,50 +2581,50 @@ export function registerIpcHandlers(
 		}
 	});
 
-		ipcMain.handle("open-audio-file-picker", async () => {
-			try {
-				const dialogOptions = buildDialogOptions(
-					{
-						title: "Select audio file",
-						defaultPath: app.getPath("music"),
-						filters: [
-							{
-								name: "Audio Files",
-								extensions: ["mp3", "wav", "m4a", "aac", "ogg", "flac", "webm"],
-							},
-							{ name: "All Files", extensions: ["*"] },
-						],
-						properties: ["openFile"],
-					},
-					getMainWindow(),
-				);
-				const result = await dialog.showOpenDialog(dialogOptions);
+	ipcMain.handle("open-audio-file-picker", async () => {
+		try {
+			const dialogOptions = buildDialogOptions(
+				{
+					title: "Select audio file",
+					defaultPath: app.getPath("music"),
+					filters: [
+						{
+							name: "Audio Files",
+							extensions: ["mp3", "wav", "m4a", "aac", "ogg", "flac", "webm"],
+						},
+						{ name: "All Files", extensions: ["*"] },
+					],
+					properties: ["openFile"],
+				},
+				getMainWindow(),
+			);
+			const result = await dialog.showOpenDialog(dialogOptions);
 
-				if (result.canceled || result.filePaths.length === 0) {
-					return { success: false, canceled: true };
-				}
+			if (result.canceled || result.filePaths.length === 0) {
+				return { success: false, canceled: true };
+			}
 
-				const approvedPath = await approveReadableAudioPath(result.filePaths[0]);
-				if (!approvedPath) {
-					return {
-						success: false,
-						message: "Selected file is not a supported audio file",
-					};
-				}
-
-				return {
-					success: true,
-					path: approvedPath,
-				};
-			} catch (error) {
-				console.error("Failed to open audio file picker:", error);
+			const approvedPath = await approveReadableAudioPath(result.filePaths[0]);
+			if (!approvedPath) {
 				return {
 					success: false,
-					message: "Failed to open audio file picker",
-					error: String(error),
+					message: "Selected file is not a supported audio file",
 				};
 			}
-		});
+
+			return {
+				success: true,
+				path: approvedPath,
+			};
+		} catch (error) {
+			console.error("Failed to open audio file picker:", error);
+			return {
+				success: false,
+				message: "Failed to open audio file picker",
+				error: String(error),
+			};
+		}
+	});
 
 	ipcMain.handle("reveal-in-folder", async (_, filePath: string) => {
 		try {
@@ -2987,7 +2988,6 @@ export function registerIpcHandlers(
 		}
 	});
 
-
 	ipcMain.handle(
 		"save-diagnostic",
 		async (
@@ -3027,9 +3027,7 @@ export function registerIpcHandlers(
 				return { success: false, error: String(error) };
 			}
 		},
-		);
-
-
+	);
 
 	// ---- Security Check for Native APIs ----
 	function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
@@ -3085,6 +3083,10 @@ export function registerIpcHandlers(
 				bitrate: number;
 				audioSourcePath?: string;
 				hasAudio?: boolean;
+				backgroundAudioPath?: string;
+				backgroundAudioVolume?: number;
+				backgroundMusicFadeIn?: number;
+				backgroundMusicFadeOut?: number;
 			},
 		) => {
 			// Ensure only trusted local code can spawn arbitrary shell binaries
@@ -3114,6 +3116,27 @@ export function registerIpcHandlers(
 					}
 				}
 
+				// Resolve background audio path if it's a file:// URL
+				let resolvedBackgroundPath = config.backgroundAudioPath;
+				if (resolvedBackgroundPath && /^file:\/\//i.test(resolvedBackgroundPath)) {
+					try {
+						resolvedBackgroundPath = fileURLToPath(resolvedBackgroundPath);
+					} catch {
+						resolvedBackgroundPath = undefined;
+					}
+				}
+				if (resolvedBackgroundPath) {
+					try {
+						await fs.access(resolvedBackgroundPath);
+					} catch {
+						console.warn(
+							"[FFmpeg] Background audio not accessible, skipping:",
+							resolvedBackgroundPath,
+						);
+						resolvedBackgroundPath = undefined;
+					}
+				}
+
 				// Verify audio source exists
 				let hasAudio = config.hasAudio ?? false;
 				if (resolvedAudioPath && hasAudio) {
@@ -3138,6 +3161,10 @@ export function registerIpcHandlers(
 					outputPath,
 					audioSourcePath: resolvedAudioPath,
 					hasAudio,
+					backgroundAudioPath: resolvedBackgroundPath,
+					backgroundAudioVolume: config.backgroundAudioVolume ?? 0.35,
+					backgroundMusicFadeIn: config.backgroundMusicFadeIn ?? 0,
+					backgroundMusicFadeOut: config.backgroundMusicFadeOut ?? 0,
 				});
 
 				console.log(`[FFmpeg] Starting export: ${ffmpegPath} ${args.join(" ")}`);
@@ -3184,7 +3211,6 @@ export function registerIpcHandlers(
 			}
 		},
 	);
-
 
 	ipcMain.handle(
 		"ffmpeg-export-frame",
@@ -3308,7 +3334,7 @@ export function registerIpcHandlers(
 		} catch (error) {
 			return { success: false, error: String(error) };
 		}
-		});
+	});
 
 	registerNativeBridgeHandlers({
 		getPlatform: () => process.platform,
@@ -3326,6 +3352,5 @@ export function registerIpcHandlers(
 			normalizeVideoSourcePath(videoPath ?? currentVideoPath),
 		loadCursorRecordingData: readCursorRecordingFile,
 		loadCursorTelemetry: readCursorTelemetryFile,
-
 	});
 }

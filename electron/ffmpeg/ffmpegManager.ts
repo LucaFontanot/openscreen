@@ -156,14 +156,25 @@ export function buildFFmpegArgs(config: {
 	outputPath: string;
 	audioSourcePath?: string;
 	hasAudio?: boolean;
+	backgroundAudioPath?: string;
+	backgroundAudioVolume?: number;
+	backgroundMusicFadeIn?: number;
+	backgroundMusicFadeOut?: number;
 }): string[] {
+	const hasBackgroundAudio = Boolean(config.backgroundAudioPath);
+	const hasMainAudio = Boolean(config.audioSourcePath && config.hasAudio);
+	const bgVolume = config.backgroundAudioVolume ?? 0.35;
+	const fadeInSec = config.backgroundMusicFadeIn ?? 0;
+	// Note: fadeOut is not applied via FFmpeg because it requires knowing the stream
+	// duration in advance (which we don't have with a pipe). The WebCodecs path handles
+	// fade-out in the renderer.
+
 	const args: string[] = [
 		"-hide_banner",
 		"-loglevel",
 		"warning",
-		"-y", // overwrite output
-
-		// Input 0: Raw H.264 video stream from stdin (encoded by Chrome's hardware encoder)
+		"-y",
+		// Input 0: Raw H.264 video stream from stdin
 		"-f",
 		"h264",
 		"-r",
@@ -172,26 +183,45 @@ export function buildFFmpegArgs(config: {
 		"pipe:0",
 	];
 
-	// Input 1: audio from source file (if available)
-	if (config.audioSourcePath && config.hasAudio) {
-		args.push("-i", config.audioSourcePath);
+	// Input 1: main audio from source file
+	if (hasMainAudio) {
+		args.push("-i", config.audioSourcePath!);
 	}
 
-	// Video encoding settings - we just copy the stream since it's already hardware-encoded H.264!
+	// Input 2: background music
+	if (hasBackgroundAudio) {
+		args.push("-i", config.backgroundAudioPath!);
+	}
+
+	// Video: copy the pre-encoded H.264 stream
 	args.push("-map", "0:v", "-c:v", "copy");
 
-	// Audio settings
-	if (config.audioSourcePath && config.hasAudio) {
-		args.push("-map", "1:a", "-c:a", "aac", "-b:a", "192k", "-ac", "2");
+	// Audio: mix or pass through
+	if (hasMainAudio && hasBackgroundAudio) {
+		// Both: mix with amix filter, apply volume/fade to background
+		const bgFilterParts = [`[1:a]volume=${bgVolume}`];
+		if (fadeInSec > 0) bgFilterParts.push(`afade=t=in:d=${fadeInSec}`);
+		const bgFilter = bgFilterParts.join(",");
+		const filterComplex = `${bgFilter}[bg];[bg][2:a]amix=inputs=2:duration=first:dropout_transition=0[audio]`;
+		args.push("-filter_complex", filterComplex);
+		args.push("-map", "[audio]");
+	} else if (hasMainAudio) {
+		// Only main audio
+		args.push("-map", "1:a");
+	} else if (hasBackgroundAudio) {
+		// Only background audio (no main video audio)
+		const audioFilters = [`volume=${bgVolume}`];
+		if (fadeInSec > 0) audioFilters.push(`afade=t=in:d=${fadeInSec}`);
+		args.push("-map", "1:a", "-af", audioFilters.join(","));
 	}
 
-	// MP4 settings
-	args.push(
-		"-movflags",
-		"+faststart",
-		"-shortest", // end when shortest stream ends
-		config.outputPath,
-	);
+	if (hasMainAudio || hasBackgroundAudio) {
+		args.push("-c:a", "aac", "-b:a", "192k", "-ac", "2");
+	}
+
+	args.push("-movflags", "+faststart");
+	args.push("-shortest");
+	args.push(config.outputPath);
 
 	return args;
 }

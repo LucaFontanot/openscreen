@@ -62,6 +62,11 @@ interface FFmpegExporterConfig {
 	cursorClickTimestamps?: number[];
 	platform: string;
 	onProgress?: (progress: ExportProgress) => void;
+	// Audio
+	backgroundAudioUrl?: string;
+	backgroundAudioVolume?: number;
+	backgroundMusicFadeIn?: number;
+	backgroundMusicFadeOut?: number;
 }
 
 export class FFmpegExporter {
@@ -171,7 +176,11 @@ export class FFmpegExporter {
 				encoder,
 				bitrate: this.config.bitrate,
 				audioSourcePath: this.config.videoUrl,
-				hasAudio: videoInfo.hasAudio,
+				hasAudio: videoInfo.hasAudio || Boolean(this.config.backgroundAudioUrl),
+				backgroundAudioPath: this.config.backgroundAudioUrl,
+				backgroundAudioVolume: this.config.backgroundAudioVolume ?? 0.35,
+				backgroundMusicFadeIn: this.config.backgroundMusicFadeIn ?? 0,
+				backgroundMusicFadeOut: this.config.backgroundMusicFadeOut ?? 0,
 			});
 
 			if (!startResult.success || !startResult.sessionId) {

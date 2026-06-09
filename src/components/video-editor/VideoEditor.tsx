@@ -22,8 +22,8 @@ import {
 } from "@/components/ui/select";
 import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
-import { INITIAL_EDITOR_STATE, useEditorHistory } from "@/hooks/useEditorHistory";
 import { useAudioPreview } from "@/hooks/useAudioPreview";
+import { INITIAL_EDITOR_STATE, useEditorHistory } from "@/hooks/useEditorHistory";
 import { type Locale } from "@/i18n/config";
 import { getAvailableLocales, getLocaleName } from "@/i18n/loader";
 import {
@@ -44,8 +44,8 @@ import {
 	type ExportProgress,
 	type ExportQuality,
 	type ExportSettings,
-	GIF_SIZE_PRESETS,
 	FFmpegExporter,
+	GIF_SIZE_PRESETS,
 	GifExporter,
 	type GifFrameRate,
 	type GifSizePreset,
@@ -2062,6 +2062,10 @@ export default function VideoEditor() {
 							onProgress: (progress: ExportProgress) => {
 								setExportProgress(progress);
 							},
+							backgroundAudioUrl: backgroundMusicPath || undefined,
+							backgroundAudioVolume: backgroundMusicVolume,
+							backgroundMusicFadeIn,
+							backgroundMusicFadeOut,
 						});
 
 						exporterRef.current = ffmpegExporter;
@@ -2074,7 +2078,10 @@ export default function VideoEditor() {
 						} else if (result.success && result.type === "blob") {
 							// Fallback: FFmpeg returned a blob instead
 							const arrayBuffer = await result.blob.arrayBuffer();
-							const saveResult = await window.electronAPI.writeExportToPath(arrayBuffer, targetPath);
+							const saveResult = await window.electronAPI.writeExportToPath(
+								arrayBuffer,
+								targetPath,
+							);
 							if (saveResult.success && saveResult.path) {
 								setUnsavedExport(null);
 								handleExportSaved("Video", saveResult.path);
@@ -2131,7 +2138,8 @@ export default function VideoEditor() {
 							cursorTelemetry,
 							cursorClickTimestamps,
 							backgroundAudioUrl: backgroundMusicPath || undefined,
-							backgroundAudioRegions: backgroundMusicRegions.length > 0 ? backgroundMusicRegions : undefined,
+							backgroundAudioRegions:
+								backgroundMusicRegions.length > 0 ? backgroundMusicRegions : undefined,
 							backgroundAudioVolume: backgroundMusicVolume,
 							backgroundMusicFadeIn,
 							backgroundMusicFadeOut,
@@ -2151,7 +2159,10 @@ export default function VideoEditor() {
 							const arrayBuffer = await result.blob.arrayBuffer();
 							const timestamp = Date.now();
 							const fileName = `export-${timestamp}.mp4`;
-							const saveResult = await window.electronAPI.writeExportToPath(arrayBuffer, targetPath);
+							const saveResult = await window.electronAPI.writeExportToPath(
+								arrayBuffer,
+								targetPath,
+							);
 							if (saveResult.success && saveResult.path) {
 								setUnsavedExport(null);
 								handleExportSaved("Video", saveResult.path);
@@ -2750,6 +2761,11 @@ export default function VideoEditor() {
 													cursorClipToBounds={cursorClipToBounds}
 													cursorTheme={cursorTheme}
 													isPreviewingZoom={isPreviewingZoom}
+													backgroundMusicPath={backgroundMusicPath}
+													backgroundMusicVolume={backgroundMusicVolume}
+													backgroundMusicFadeIn={backgroundMusicFadeIn}
+													backgroundMusicFadeOut={backgroundMusicFadeOut}
+													backgroundMusicRegions={backgroundMusicRegions}
 												/>
 											</div>
 										</div>
@@ -2954,7 +2970,9 @@ export default function VideoEditor() {
 										onBackgroundMusicVolumeCommit={commitState}
 										onBackgroundMusicFadeInChange={(v) => updateState({ backgroundMusicFadeIn: v })}
 										onBackgroundMusicFadeInCommit={commitState}
-										onBackgroundMusicFadeOutChange={(v) => updateState({ backgroundMusicFadeOut: v })}
+										onBackgroundMusicFadeOutChange={(v) =>
+											updateState({ backgroundMusicFadeOut: v })
+										}
 										onBackgroundMusicFadeOutCommit={commitState}
 										onMusicTrackSelect={audioPreview.handleMusicTrackSelect}
 										backgroundMusicRegions={backgroundMusicRegions}

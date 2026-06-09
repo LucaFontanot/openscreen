@@ -314,6 +314,10 @@ interface Window {
 			bitrate: number;
 			audioSourcePath?: string;
 			hasAudio?: boolean;
+			backgroundAudioPath?: string;
+			backgroundAudioVolume?: number;
+			backgroundMusicFadeIn?: number;
+			backgroundMusicFadeOut?: number;
 		}) => Promise<{
 			success: boolean;
 			sessionId?: string;

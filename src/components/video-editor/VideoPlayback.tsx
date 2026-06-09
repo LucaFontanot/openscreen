@@ -148,6 +148,12 @@ interface VideoPlaybackProps {
 	// Render the selected zoom at the playhead even while paused, so the editor can
 	// preview the effect without leaving the focus-edit view.
 	isPreviewingZoom?: boolean;
+	// Background music
+	backgroundMusicPath?: string | null;
+	backgroundMusicVolume?: number;
+	backgroundMusicFadeIn?: number;
+	backgroundMusicFadeOut?: number;
+	backgroundMusicRegions?: TrimRegion[];
 }
 
 export interface VideoPlaybackRef {
@@ -273,11 +279,17 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cursorClipToBounds = DEFAULT_CURSOR_SETTINGS.clipToBounds,
 			cursorTheme = DEFAULT_CURSOR_SETTINGS.theme,
 			isPreviewingZoom = false,
+			backgroundMusicPath = null,
+			backgroundMusicVolume = 0.35,
+			backgroundMusicFadeIn = 0,
+			backgroundMusicFadeOut = 0,
+			backgroundMusicRegions = [],
 		},
 		ref,
 	) => {
 		const videoRef = useRef<HTMLVideoElement | null>(null);
 		const supplementalAudioRef = useRef<HTMLAudioElement | null>(null);
+		const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
 		const webcamWrapperRef = useRef<HTMLDivElement | null>(null);
 		const webcamReactiveZoomRef = useRef(webcamReactiveZoom);
@@ -635,6 +647,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							// The main video remains the source of truth for playback state.
 						});
 					}
+					const bgMusic = backgroundMusicRef.current;
+					if (bgMusic && backgroundMusicPath) {
+						bgMusic.currentTime = vid.currentTime;
+						bgMusic.playbackRate = vid.playbackRate;
+						bgMusic.volume = 0;
+						await bgMusic.play().catch(() => {
+							// Keep video playback running even if background music is unavailable.
+						});
+					}
 				} catch (error) {
 					allowPlaybackRef.current = false;
 					throw error;
@@ -648,6 +669,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 				video.pause();
 				supplementalAudioRef.current?.pause();
+				backgroundMusicRef.current?.pause();
 			},
 		}));
 
@@ -1154,6 +1176,76 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				// Keep video playback running even if supplemental preview audio is unavailable.
 			});
 		}, [currentTime, isPlaying, speedRegions, supplementalAudioPath]);
+
+		// Background music preview sync
+		useEffect(() => {
+			const video = videoRef.current;
+			const bgMusic = backgroundMusicRef.current;
+			if (!video || !bgMusic || !backgroundMusicPath) {
+				return;
+			}
+
+			const activeSpeedRegion =
+				speedRegions.find(
+					(region) => currentTime * 1000 >= region.startMs && currentTime * 1000 < region.endMs,
+				) ?? null;
+			bgMusic.playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+
+			if (!isPlaying) {
+				bgMusic.pause();
+				if (Math.abs(bgMusic.currentTime - currentTime) > 0.05) {
+					bgMusic.currentTime = currentTime;
+				}
+				return;
+			}
+
+			const currentTimeMs = currentTime * 1000;
+			const isInRegion =
+				backgroundMusicRegions.length === 0 ||
+				backgroundMusicRegions.some(
+					(region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
+				);
+
+			if (!isInRegion) {
+				bgMusic.pause();
+				return;
+			}
+
+			let volume = Math.min(1, Math.max(0, backgroundMusicVolume));
+
+			const fadeInMs = backgroundMusicFadeIn * 1000;
+			if (fadeInMs > 0 && currentTimeMs < fadeInMs) {
+				volume *= currentTimeMs / fadeInMs;
+			}
+
+			const fadeOutMs = backgroundMusicFadeOut * 1000;
+			if (fadeOutMs > 0) {
+				const durationMs = (video.duration || currentTime) * 1000;
+				const remainingMs = durationMs - currentTimeMs;
+				if (remainingMs < fadeOutMs) {
+					volume *= Math.max(0, remainingMs / fadeOutMs);
+				}
+			}
+
+			bgMusic.volume = volume;
+
+			if (Math.abs(bgMusic.currentTime - video.currentTime) > 0.15) {
+				bgMusic.currentTime = video.currentTime;
+			}
+
+			bgMusic.play().catch(() => {
+				// Keep video playback running even if background music is unavailable.
+			});
+		}, [
+			currentTime,
+			isPlaying,
+			backgroundMusicPath,
+			backgroundMusicVolume,
+			backgroundMusicFadeIn,
+			backgroundMusicFadeOut,
+			backgroundMusicRegions,
+			speedRegions,
+		]);
 
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
@@ -2156,6 +2248,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				/>
 				{supplementalAudioPath && (
 					<audio ref={supplementalAudioRef} src={supplementalAudioPath} preload="auto" />
+				)}
+				{backgroundMusicPath && (
+					<audio ref={backgroundMusicRef} src={backgroundMusicPath} preload="auto" loop />
 				)}
 			</div>
 		);

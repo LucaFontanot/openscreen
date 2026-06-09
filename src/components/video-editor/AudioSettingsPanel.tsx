@@ -1,6 +1,6 @@
+import Fuse, { type FuseResult } from "fuse.js";
 import { Search, Trash2, Upload, Volume2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Fuse, { type FuseResult } from "fuse.js";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -12,9 +12,9 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useScopedT } from "@/contexts/I18nContext";
+import type { AudioLibraryItem } from "@/lib/audioLibrary";
 import { AUDIO_LIBRARY } from "@/lib/audioLibrary";
 import { cn } from "@/lib/utils";
-import type { AudioLibraryItem } from "@/lib/audioLibrary";
 import type { AudioHooksConfig, AudioHookType, TrimRegion } from "./types";
 import { DEFAULT_AUDIO_HOOKS } from "./types";
 
@@ -79,6 +79,7 @@ export function AudioSettingsPanel({
 	const [hookLibraryQuery, setHookLibraryQuery] = useState("");
 	const [selectedHookTarget, setSelectedHookTarget] = useState<AudioHookType>("zoom");
 	const [previewingMusicTrackId, setPreviewingMusicTrackId] = useState<string | null>(null);
+	const [activeTab, setActiveTab] = useState("upload");
 	const musicPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
 
 	const backgroundMusicName = useMemo(() => {
@@ -102,10 +103,7 @@ export function AudioSettingsPanel({
 		() => AUDIO_LIBRARY.filter((entry) => entry.category === "music"),
 		[],
 	);
-	const hookLibrary = useMemo(
-		() => AUDIO_LIBRARY.filter((entry) => entry.category === "hook"),
-		[],
-	);
+	const hookLibrary = useMemo(() => AUDIO_LIBRARY.filter((entry) => entry.category === "hook"), []);
 
 	const musicFuse = useMemo(
 		() =>
@@ -127,13 +125,13 @@ export function AudioSettingsPanel({
 	const filteredMusicLibrary = useMemo(() => {
 		const query = musicLibraryQuery.trim();
 		if (!query) return musicLibrary;
-		return musicFuse.search(query).map((r: FuseResult<typeof musicLibrary[number]>) => r.item);
+		return musicFuse.search(query).map((r: FuseResult<(typeof musicLibrary)[number]>) => r.item);
 	}, [musicLibrary, musicLibraryQuery, musicFuse]);
 
 	const filteredHookLibrary = useMemo(() => {
 		const query = hookLibraryQuery.trim();
 		if (!query) return hookLibrary;
-		return hookFuse.search(query).map((r: FuseResult<typeof hookLibrary[number]>) => r.item);
+		return hookFuse.search(query).map((r: FuseResult<(typeof hookLibrary)[number]>) => r.item);
 	}, [hookLibrary, hookLibraryQuery, hookFuse]);
 
 	const stopMusicPreview = useCallback(() => {
@@ -172,7 +170,7 @@ export function AudioSettingsPanel({
 	}, [stopMusicPreview]);
 
 	return (
-		<Tabs defaultValue="upload" className="w-full">
+		<Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 			<TabsList className="mb-2 bg-white/5 border border-white/5 p-0.5 w-full grid grid-cols-3 h-7 rounded-lg">
 				<TabsTrigger
 					value="upload"
@@ -312,13 +310,14 @@ export function AudioSettingsPanel({
 								>
 									{previewingMusicTrackId === track.id ? "⏹" : "▶"}
 								</button>
-								<span className="flex-1 text-[10px] text-slate-300 truncate">
-									{track.name}
-								</span>
+								<span className="flex-1 text-[10px] text-slate-300 truncate">{track.name}</span>
 								<Button
 									variant="ghost"
 									size="sm"
-									onClick={() => onMusicTrackSelect?.(track.url)}
+									onClick={() => {
+										onMusicTrackSelect?.(track.url);
+										setActiveTab("upload");
+									}}
 									className="h-6 text-[10px] text-[#34B27B] hover:text-[#34B27B] hover:bg-[#34B27B]/10 px-2"
 								>
 									{t("audio.useTrack")}
@@ -416,9 +415,7 @@ export function AudioSettingsPanel({
 								key={track.id}
 								className="flex items-center gap-2 p-1.5 rounded-md hover:bg-white/5"
 							>
-								<span className="flex-1 text-[10px] text-slate-300 truncate">
-									{track.name}
-								</span>
+								<span className="flex-1 text-[10px] text-slate-300 truncate">{track.name}</span>
 								<Button
 									variant="ghost"
 									size="sm"
