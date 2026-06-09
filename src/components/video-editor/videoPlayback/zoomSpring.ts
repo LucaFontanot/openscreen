@@ -1,8 +1,8 @@
 import {
-	createSpringState,
-	getZoomSpringConfig,
-	type SpringState,
-	stepSpringValue,
+  createSpringState,
+  getZoomSpringConfig,
+  type SpringState,
+  stepSpringValue,
 } from "./motionSmoothing";
 
 /**
@@ -16,36 +16,36 @@ import {
  */
 
 export interface ZoomTransform {
-	scale: number;
-	x: number;
-	y: number;
+  scale: number;
+  x: number;
+  y: number;
 }
 
 export interface ZoomSpringState {
-	scale: SpringState;
-	x: SpringState;
-	y: SpringState;
+  scale: SpringState;
+  x: SpringState;
+  y: SpringState;
 }
 
 export function createZoomSpringState(): ZoomSpringState {
-	return {
-		scale: createSpringState(1),
-		x: createSpringState(0),
-		y: createSpringState(0),
-	};
+  return {
+    scale: createSpringState(1),
+    x: createSpringState(0),
+    y: createSpringState(0),
+  };
 }
 
 /** Snap every axis straight to the target (used on seek / pause / first frame). */
 export function resetZoomSpring(state: ZoomSpringState, target: ZoomTransform): void {
-	for (const [axis, value] of [
-		[state.scale, target.scale],
-		[state.x, target.x],
-		[state.y, target.y],
-	] as const) {
-		axis.value = value;
-		axis.velocity = 0;
-		axis.initialized = true;
-	}
+  for (const [axis, value] of [
+    [state.scale, target.scale],
+    [state.x, target.x],
+    [state.y, target.y],
+  ] as const) {
+    axis.value = value;
+    axis.velocity = 0;
+    axis.initialized = true;
+  }
 }
 
 /**
@@ -54,32 +54,32 @@ export function resetZoomSpring(state: ZoomSpringState, target: ZoomTransform): 
  * the step crosses the target, snap to it and zero the velocity to stay quick without jelly.
  */
 function stepAxis(
-	axis: SpringState,
-	target: number,
-	deltaMs: number,
-	config: ReturnType<typeof getZoomSpringConfig>,
+  axis: SpringState,
+  target: number,
+  deltaMs: number,
+  config: ReturnType<typeof getZoomSpringConfig>,
 ): number {
-	const before = axis.initialized ? axis.value : target;
-	const after = stepSpringValue(axis, target, deltaMs, config);
-	const crossed = (before <= target && after > target) || (before >= target && after < target);
-	if (crossed) {
-		axis.value = target;
-		axis.velocity = 0;
-		return target;
-	}
-	return after;
+  const before = axis.initialized ? axis.value : target;
+  const after = stepSpringValue(axis, target, deltaMs, config);
+  const crossed = (before <= target && after > target) || (before >= target && after < target);
+  if (crossed) {
+    axis.value = target;
+    axis.velocity = 0;
+    return target;
+  }
+  return after;
 }
 
 /** Advance the spring toward target by deltaMs (content time); returns the smoothed transform. */
 export function stepZoomSpring(
-	state: ZoomSpringState,
-	target: ZoomTransform,
-	deltaMs: number,
+  state: ZoomSpringState,
+  target: ZoomTransform,
+  deltaMs: number,
 ): ZoomTransform {
-	const config = getZoomSpringConfig();
-	return {
-		scale: stepAxis(state.scale, target.scale, deltaMs, config),
-		x: stepAxis(state.x, target.x, deltaMs, config),
-		y: stepAxis(state.y, target.y, deltaMs, config),
-	};
+  const config = getZoomSpringConfig();
+  return {
+    scale: stepAxis(state.scale, target.scale, deltaMs, config),
+    x: stepAxis(state.x, target.x, deltaMs, config),
+    y: stepAxis(state.y, target.y, deltaMs, config),
+  };
 }

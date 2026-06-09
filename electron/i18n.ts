@@ -27,85 +27,85 @@ import commonZhTw from "../src/i18n/locales/zh-TW/common.json";
 import dialogsZhTw from "../src/i18n/locales/zh-TW/dialogs.json";
 
 type Locale =
-	| "en"
-	| "ar"
-	| "es"
-	| "fr"
-	| "it"
-	| "ja-JP"
-	| "ko-KR"
-	| "ru"
-	| "tr"
-	| "vi"
-	| "zh-CN"
-	| "zh-TW";
+  | "en"
+  | "ar"
+  | "es"
+  | "fr"
+  | "it"
+  | "ja-JP"
+  | "ko-KR"
+  | "ru"
+  | "tr"
+  | "vi"
+  | "zh-CN"
+  | "zh-TW";
 type Namespace = "common" | "dialogs";
 type MessageMap = Record<string, unknown>;
 
 const messages: Record<Locale, Record<Namespace, MessageMap>> = {
-	en: { common: commonEn, dialogs: dialogsEn },
-	ar: { common: commonAr, dialogs: dialogsAr },
-	es: { common: commonEs, dialogs: dialogsEs },
-	fr: { common: commonFr, dialogs: dialogsFr },
-	it: { common: commonIt, dialogs: dialogsIt },
-	"ja-JP": { common: commonJa, dialogs: dialogsJa },
-	"ko-KR": { common: commonKo, dialogs: dialogsKo },
-	ru: { common: commonRu, dialogs: dialogsRu },
-	tr: { common: commonTr, dialogs: dialogsTr },
-	vi: { common: commonVi, dialogs: dialogsVi },
-	"zh-CN": { common: commonZh, dialogs: dialogsZh },
-	"zh-TW": { common: commonZhTw, dialogs: dialogsZhTw },
+  en: { common: commonEn, dialogs: dialogsEn },
+  ar: { common: commonAr, dialogs: dialogsAr },
+  es: { common: commonEs, dialogs: dialogsEs },
+  fr: { common: commonFr, dialogs: dialogsFr },
+  it: { common: commonIt, dialogs: dialogsIt },
+  "ja-JP": { common: commonJa, dialogs: dialogsJa },
+  "ko-KR": { common: commonKo, dialogs: dialogsKo },
+  ru: { common: commonRu, dialogs: dialogsRu },
+  tr: { common: commonTr, dialogs: dialogsTr },
+  vi: { common: commonVi, dialogs: dialogsVi },
+  "zh-CN": { common: commonZh, dialogs: dialogsZh },
+  "zh-TW": { common: commonZhTw, dialogs: dialogsZhTw },
 };
 
 let currentLocale: Locale = "en";
 
 export function setMainLocale(locale: string) {
-	if (
-		locale === "en" ||
-		locale === "ar" ||
-		locale === "es" ||
-		locale === "fr" ||
-		locale === "it" ||
-		locale === "ja-JP" ||
-		locale === "ko-KR" ||
-		locale === "ru" ||
-		locale === "tr" ||
-		locale === "vi" ||
-		locale === "zh-CN" ||
-		locale === "zh-TW"
-	) {
-		currentLocale = locale;
-	}
+  if (
+    locale === "en" ||
+    locale === "ar" ||
+    locale === "es" ||
+    locale === "fr" ||
+    locale === "it" ||
+    locale === "ja-JP" ||
+    locale === "ko-KR" ||
+    locale === "ru" ||
+    locale === "tr" ||
+    locale === "vi" ||
+    locale === "zh-CN" ||
+    locale === "zh-TW"
+  ) {
+    currentLocale = locale;
+  }
 }
 
 export function getMainLocale(): Locale {
-	return currentLocale;
+  return currentLocale;
 }
 
 function getMessageValue(obj: unknown, dotPath: string): string | undefined {
-	const keys = dotPath.split(".");
-	let current: unknown = obj;
-	for (const key of keys) {
-		if (current == null || typeof current !== "object") return undefined;
-		current = (current as Record<string, unknown>)[key];
-	}
-	return typeof current === "string" ? current : undefined;
+  const keys = dotPath.split(".");
+  let current: unknown = obj;
+  for (const key of keys) {
+    if (current == null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "string" ? current : undefined;
 }
 
 function interpolate(str: string, vars?: Record<string, string | number>): string {
-	if (!vars) return str;
-	return str.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(vars[key] ?? `{{${key}}}`));
+  if (!vars) return str;
+  return str.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(vars[key] ?? `{{${key}}}`));
 }
 
 export function mainT(
-	namespace: Namespace,
-	key: string,
-	vars?: Record<string, string | number>,
+  namespace: Namespace,
+  key: string,
+  vars?: Record<string, string | number>,
 ): string {
-	const value =
-		getMessageValue(messages[currentLocale]?.[namespace], key) ??
-		getMessageValue(messages.en?.[namespace], key);
+  const value =
+    getMessageValue(messages[currentLocale]?.[namespace], key) ??
+    getMessageValue(messages.en?.[namespace], key);
 
-	if (value == null) return `${namespace}.${key}`;
-	return interpolate(value, vars);
+  if (value == null) return `${namespace}.${key}`;
+  return interpolate(value, vars);
 }

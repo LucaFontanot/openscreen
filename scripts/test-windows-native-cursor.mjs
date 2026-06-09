@@ -4,18 +4,18 @@ import os from "node:os";
 import path from "node:path";
 
 function readPositiveIntEnv(name, fallback) {
-	const raw = process.env[name];
-	if (raw === undefined) {
-		return fallback;
-	}
+  const raw = process.env[name];
+  if (raw === undefined) {
+    return fallback;
+  }
 
-	const parsed = Number(raw);
-	if (!Number.isFinite(parsed) || parsed <= 0) {
-		console.warn(`[cursor-native-test] ignoring invalid ${name}=${raw}; using ${fallback}`);
-		return fallback;
-	}
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(`[cursor-native-test] ignoring invalid ${name}=${raw}; using ${fallback}`);
+    return fallback;
+  }
 
-	return Math.floor(parsed);
+  return Math.floor(parsed);
 }
 
 const SAMPLE_INTERVAL_MS = readPositiveIntEnv("CURSOR_TEST_SAMPLE_INTERVAL_MS", 25);
@@ -23,103 +23,103 @@ const DURATION_MS = readPositiveIntEnv("CURSOR_TEST_DURATION_MS", 1800);
 const SCREEN_FRAME_INTERVAL_MS = readPositiveIntEnv("CURSOR_TEST_SCREEN_FRAME_INTERVAL_MS", 100);
 const READY_TIMEOUT_MS = readPositiveIntEnv("CURSOR_TEST_READY_TIMEOUT_MS", 5000);
 const OUTPUT_DIR =
-	process.env.CURSOR_TEST_OUTPUT_DIR ??
-	path.join(os.tmpdir(), `openscreen-cursor-native-${Date.now()}`);
+  process.env.CURSOR_TEST_OUTPUT_DIR ??
+  path.join(os.tmpdir(), `openscreen-cursor-native-${Date.now()}`);
 
 if (process.platform !== "win32") {
-	console.error("This diagnostic is Windows-only.");
-	process.exit(1);
+  console.error("This diagnostic is Windows-only.");
+  process.exit(1);
 }
 
 function encodePowerShell(script) {
-	return Buffer.from(script, "utf16le").toString("base64");
+  return Buffer.from(script, "utf16le").toString("base64");
 }
 
 function quotePowerShellString(value) {
-	return `'${String(value).replaceAll("'", "''")}'`;
+  return `'${String(value).replaceAll("'", "''")}'`;
 }
 
 function runPowerShell(script) {
-	return new Promise((resolve, reject) => {
-		const child = spawn(
-			"powershell.exe",
-			[
-				"-NoLogo",
-				"-NoProfile",
-				"-NonInteractive",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-EncodedCommand",
-				encodePowerShell(script),
-			],
-			{ stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
-		);
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "powershell.exe",
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-EncodedCommand",
+        encodePowerShell(script),
+      ],
+      { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
+    );
 
-		let stdout = "";
-		let stderr = "";
-		child.stdout.setEncoding("utf8");
-		child.stderr.setEncoding("utf8");
-		child.stdout.on("data", (chunk) => {
-			stdout += chunk;
-		});
-		child.stderr.on("data", (chunk) => {
-			stderr += chunk;
-		});
-		child.once("error", reject);
-		child.once("exit", (code, signal) => {
-			if (code === 0) {
-				resolve(stdout);
-				return;
-			}
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolve(stdout);
+        return;
+      }
 
-			reject(
-				new Error(`PowerShell command failed (code=${code}, signal=${signal}): ${stderr.trim()}`),
-			);
-		});
-	});
+      reject(
+        new Error(`PowerShell command failed (code=${code}, signal=${signal}): ${stderr.trim()}`),
+      );
+    });
+  });
 }
 
 function spawnPowerShell(script, { onStdout, onStderr } = {}) {
-	const scriptPath = path.join(
-		os.tmpdir(),
-		`openscreen-powershell-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.ps1`,
-	);
-	fs.writeFileSync(scriptPath, script, "utf8");
-	const child = spawn(
-		"powershell.exe",
-		["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
-		{ stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
-	);
+  const scriptPath = path.join(
+    os.tmpdir(),
+    `openscreen-powershell-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.ps1`,
+  );
+  fs.writeFileSync(scriptPath, script, "utf8");
+  const child = spawn(
+    "powershell.exe",
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
+    { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
+  );
 
-	child.stdout.setEncoding("utf8");
-	child.stderr.setEncoding("utf8");
-	child.stdout.on("data", (chunk) => onStdout?.(chunk));
-	child.stderr.on("data", (chunk) => onStderr?.(chunk));
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => onStdout?.(chunk));
+  child.stderr.on("data", (chunk) => onStderr?.(chunk));
 
-	const done = new Promise((resolve, reject) => {
-		const cleanup = () => {
-			fs.rmSync(scriptPath, { force: true });
-		};
-		child.once("error", (error) => {
-			cleanup();
-			reject(error);
-		});
-		child.once("exit", (code, signal) => {
-			cleanup();
-			if (code === 0 || child.killed) {
-				resolve({ code, signal });
-				return;
-			}
+  const done = new Promise((resolve, reject) => {
+    const cleanup = () => {
+      fs.rmSync(scriptPath, { force: true });
+    };
+    child.once("error", (error) => {
+      cleanup();
+      reject(error);
+    });
+    child.once("exit", (code, signal) => {
+      cleanup();
+      if (code === 0 || child.killed) {
+        resolve({ code, signal });
+        return;
+      }
 
-			reject(new Error(`PowerShell process failed (code=${code}, signal=${signal})`));
-		});
-	});
+      reject(new Error(`PowerShell process failed (code=${code}, signal=${signal})`));
+    });
+  });
 
-	return { child, done };
+  return { child, done };
 }
 
 function buildSamplerScript() {
-	return String.raw`
+  return String.raw`
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
@@ -458,10 +458,10 @@ while ($true) {
 }
 
 function buildMousePathScript(durationMs) {
-	const stepMs = 120;
-	const steps = Math.max(8, Math.floor(durationMs / stepMs));
+  const stepMs = 120;
+  const steps = Math.max(8, Math.floor(durationMs / stepMs));
 
-	return String.raw`
+  return String.raw`
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -505,9 +505,9 @@ for ($i = 0; $i -lt $points.Count; $i++) {
 }
 
 function buildScreenRecorderScript(outputDir, durationMs) {
-	const framesDir = path.join(outputDir, "screen-frames");
+  const framesDir = path.join(outputDir, "screen-frames");
 
-	return String.raw`
+  return String.raw`
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
@@ -566,105 +566,105 @@ while ($stopwatch.ElapsedMilliseconds -le ${durationMs + 700}) {
 }
 
 function createReadyWaiter() {
-	let settled = false;
-	let resolveReady = null;
-	const promise = new Promise((resolve, reject) => {
-		const timer = setTimeout(() => {
-			if (settled) {
-				return;
-			}
-			settled = true;
-			reject(new Error("Timed out waiting for cursor sampler readiness."));
-		}, READY_TIMEOUT_MS);
+  let settled = false;
+  let resolveReady = null;
+  const promise = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(new Error("Timed out waiting for cursor sampler readiness."));
+    }, READY_TIMEOUT_MS);
 
-		resolveReady = () => {
-			if (settled) {
-				return;
-			}
-			settled = true;
-			clearTimeout(timer);
-			resolve();
-		};
-	});
+    resolveReady = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+  });
 
-	return {
-		promise,
-		resolve: () => resolveReady?.(),
-	};
+  return {
+    promise,
+    resolve: () => resolveReady?.(),
+  };
 }
 
 function writeAssets(assets, outputDir) {
-	const assetDir = path.join(outputDir, "assets");
-	fs.mkdirSync(assetDir, { recursive: true });
+  const assetDir = path.join(outputDir, "assets");
+  fs.mkdirSync(assetDir, { recursive: true });
 
-	for (const asset of assets.values()) {
-		const base64 = asset.imageDataUrl?.replace(/^data:image\/png;base64,/, "");
-		if (!base64) {
-			continue;
-		}
+  for (const asset of assets.values()) {
+    const base64 = asset.imageDataUrl?.replace(/^data:image\/png;base64,/, "");
+    if (!base64) {
+      continue;
+    }
 
-		const safeId = String(asset.id).replace(/[^a-zA-Z0-9_-]/g, "_");
-		fs.writeFileSync(path.join(assetDir, `${safeId}.png`), Buffer.from(base64, "base64"));
-	}
+    const safeId = String(asset.id).replace(/[^a-zA-Z0-9_-]/g, "_");
+    fs.writeFileSync(path.join(assetDir, `${safeId}.png`), Buffer.from(base64, "base64"));
+  }
 }
 
 function toRecordingData(samples, assets) {
-	const firstTimestampMs = samples[0]?.timestampMs ?? Date.now();
-	let previousLeftButtonDown = false;
-	const normalizedSamples = samples.flatMap((sample) => {
-		const bounds = sample.bounds;
-		if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-			return [];
-		}
+  const firstTimestampMs = samples[0]?.timestampMs ?? Date.now();
+  let previousLeftButtonDown = false;
+  const normalizedSamples = samples.flatMap((sample) => {
+    const bounds = sample.bounds;
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+      return [];
+    }
 
-		const leftButtonDown = sample.leftButtonDown === true;
-		const leftButtonPressed = sample.leftButtonPressed === true;
-		const leftButtonReleased = sample.leftButtonReleased === true;
-		const interactionType =
-			leftButtonPressed || (leftButtonDown && !previousLeftButtonDown)
-				? "click"
-				: leftButtonReleased || (!leftButtonDown && previousLeftButtonDown)
-					? "mouseup"
-					: "move";
-		previousLeftButtonDown = leftButtonDown;
+    const leftButtonDown = sample.leftButtonDown === true;
+    const leftButtonPressed = sample.leftButtonPressed === true;
+    const leftButtonReleased = sample.leftButtonReleased === true;
+    const interactionType =
+      leftButtonPressed || (leftButtonDown && !previousLeftButtonDown)
+        ? "click"
+        : leftButtonReleased || (!leftButtonDown && previousLeftButtonDown)
+          ? "mouseup"
+          : "move";
+    previousLeftButtonDown = leftButtonDown;
 
-		return [
-			{
-				timeMs: Math.max(0, sample.timestampMs - firstTimestampMs),
-				cx: (sample.x - bounds.x) / bounds.width,
-				cy: (sample.y - bounds.y) / bounds.height,
-				assetId: sample.handle,
-				visible: Boolean(sample.visible),
-				cursorType: sample.cursorType ?? null,
-				interactionType,
-			},
-		];
-	});
+    return [
+      {
+        timeMs: Math.max(0, sample.timestampMs - firstTimestampMs),
+        cx: (sample.x - bounds.x) / bounds.width,
+        cy: (sample.y - bounds.y) / bounds.height,
+        assetId: sample.handle,
+        visible: Boolean(sample.visible),
+        cursorType: sample.cursorType ?? null,
+        interactionType,
+      },
+    ];
+  });
 
-	return {
-		version: 2,
-		provider: assets.size > 0 ? "native" : "none",
-		samples: normalizedSamples,
-		assets: [...assets.values()].map((asset) => ({
-			id: asset.id,
-			platform: "win32",
-			imageDataUrl: asset.imageDataUrl,
-			width: asset.width,
-			height: asset.height,
-			hotspotX: asset.hotspotX,
-			hotspotY: asset.hotspotY,
-			scaleFactor: 1,
-			cursorType: asset.cursorType ?? null,
-		})),
-	};
+  return {
+    version: 2,
+    provider: assets.size > 0 ? "native" : "none",
+    samples: normalizedSamples,
+    assets: [...assets.values()].map((asset) => ({
+      id: asset.id,
+      platform: "win32",
+      imageDataUrl: asset.imageDataUrl,
+      width: asset.width,
+      height: asset.height,
+      hotspotX: asset.hotspotX,
+      hotspotY: asset.hotspotY,
+      scaleFactor: 1,
+      cursorType: asset.cursorType ?? null,
+    })),
+  };
 }
 
 function escapeScriptJson(value) {
-	return JSON.stringify(value).replace(/</g, "\\u003c");
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 function buildVisualReportHtml(report, recordingData) {
-	return `<!doctype html>
+  return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -895,25 +895,25 @@ loadImages().then(() => {
 }
 
 function readScreenFrames(outputDir, recordingStartTimestampMs) {
-	const framesJsonPath = path.join(outputDir, "screen-frames", "frames.json");
-	if (!fs.existsSync(framesJsonPath)) {
-		return [];
-	}
+  const framesJsonPath = path.join(outputDir, "screen-frames", "frames.json");
+  if (!fs.existsSync(framesJsonPath)) {
+    return [];
+  }
 
-	const rawFrames = JSON.parse(fs.readFileSync(framesJsonPath, "utf8").replace(/^\uFEFF/, ""));
-	const frames = Array.isArray(rawFrames) ? rawFrames : [rawFrames];
+  const rawFrames = JSON.parse(fs.readFileSync(framesJsonPath, "utf8").replace(/^\uFEFF/, ""));
+  const frames = Array.isArray(rawFrames) ? rawFrames : [rawFrames];
 
-	return frames
-		.filter((frame) => frame?.path && fs.existsSync(frame.path))
-		.map((frame) => ({
-			...frame,
-			timeMs: Math.max(0, frame.timestampMs - recordingStartTimestampMs),
-			imageDataUrl: `data:image/png;base64,${fs.readFileSync(frame.path).toString("base64")}`,
-		}));
+  return frames
+    .filter((frame) => frame?.path && fs.existsSync(frame.path))
+    .map((frame) => ({
+      ...frame,
+      timeMs: Math.max(0, frame.timestampMs - recordingStartTimestampMs),
+      imageDataUrl: `data:image/png;base64,${fs.readFileSync(frame.path).toString("base64")}`,
+    }));
 }
 
 function buildRealCaptureHtml(report, recordingData, screenFrames) {
-	return `<!doctype html>
+  return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -1126,71 +1126,71 @@ loadImages().then(() => {
 }
 
 function findPlaywrightChromiumExecutable(defaultPath) {
-	if (fs.existsSync(defaultPath)) {
-		return defaultPath;
-	}
+  if (fs.existsSync(defaultPath)) {
+    return defaultPath;
+  }
 
-	const baseDir = path.join(process.env.LOCALAPPDATA ?? "", "ms-playwright");
-	if (!baseDir || !fs.existsSync(baseDir)) {
-		return defaultPath;
-	}
+  const baseDir = path.join(process.env.LOCALAPPDATA ?? "", "ms-playwright");
+  if (!baseDir || !fs.existsSync(baseDir)) {
+    return defaultPath;
+  }
 
-	const candidates = fs
-		.readdirSync(baseDir, { withFileTypes: true })
-		.filter((entry) => entry.isDirectory() && entry.name.startsWith("chromium-"))
-		.map((entry) => ({
-			executablePath: path.join(baseDir, entry.name, "chrome-win64", "chrome.exe"),
-			revision: Number.parseInt(entry.name.slice("chromium-".length), 10),
-		}))
-		.filter(
-			(candidate) => Number.isFinite(candidate.revision) && fs.existsSync(candidate.executablePath),
-		)
-		.sort((a, b) => b.revision - a.revision)
-		.map((candidate) => candidate.executablePath);
+  const candidates = fs
+    .readdirSync(baseDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("chromium-"))
+    .map((entry) => ({
+      executablePath: path.join(baseDir, entry.name, "chrome-win64", "chrome.exe"),
+      revision: Number.parseInt(entry.name.slice("chromium-".length), 10),
+    }))
+    .filter(
+      (candidate) => Number.isFinite(candidate.revision) && fs.existsSync(candidate.executablePath),
+    )
+    .sort((a, b) => b.revision - a.revision)
+    .map((candidate) => candidate.executablePath);
 
-	return candidates[0] ?? defaultPath;
+  return candidates[0] ?? defaultPath;
 }
 
 async function writePreviewVideo(reportPath, outputPath) {
-	const { chromium } = await import("playwright");
-	const browser = await chromium.launch({
-		executablePath: findPlaywrightChromiumExecutable(chromium.executablePath()),
-		headless: true,
-	});
-	try {
-		const page = await browser.newPage({ viewport: { width: 1180, height: 760 } });
-		await page.goto(`file:///${reportPath.replaceAll("\\", "/")}`);
-		const base64 = await page.evaluate(() => window.__exportWebm());
-		fs.writeFileSync(outputPath, Buffer.from(base64, "base64"));
-	} finally {
-		await browser.close();
-	}
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({
+    executablePath: findPlaywrightChromiumExecutable(chromium.executablePath()),
+    headless: true,
+  });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1180, height: 760 } });
+    await page.goto(`file:///${reportPath.replaceAll("\\", "/")}`);
+    const base64 = await page.evaluate(() => window.__exportWebm());
+    fs.writeFileSync(outputPath, Buffer.from(base64, "base64"));
+  } finally {
+    await browser.close();
+  }
 }
 
 function assertReport(report) {
-	const failures = [];
-	if (report.sampleCount < Math.floor(DURATION_MS / SAMPLE_INTERVAL_MS / 3)) {
-		failures.push(`Too few samples: ${report.sampleCount}.`);
-	}
-	if (report.visibleSampleCount === 0) {
-		failures.push("No visible cursor samples were captured.");
-	}
-	if (report.assetCount === 0) {
-		failures.push("No cursor asset PNG was captured.");
-	}
-	if (report.uniquePositionCount < 4) {
-		failures.push(`Cursor movement was not observed enough times: ${report.uniquePositionCount}.`);
-	}
-	if (report.errorCount > 0) {
-		failures.push(`Sampler reported ${report.errorCount} error event(s).`);
-	}
-	if (report.leftButtonPressedSampleCount === 0 || report.clickSampleCount === 0) {
-		failures.push("Left button click interaction was not observed.");
-	}
+  const failures = [];
+  if (report.sampleCount < Math.floor(DURATION_MS / SAMPLE_INTERVAL_MS / 3)) {
+    failures.push(`Too few samples: ${report.sampleCount}.`);
+  }
+  if (report.visibleSampleCount === 0) {
+    failures.push("No visible cursor samples were captured.");
+  }
+  if (report.assetCount === 0) {
+    failures.push("No cursor asset PNG was captured.");
+  }
+  if (report.uniquePositionCount < 4) {
+    failures.push(`Cursor movement was not observed enough times: ${report.uniquePositionCount}.`);
+  }
+  if (report.errorCount > 0) {
+    failures.push(`Sampler reported ${report.errorCount} error event(s).`);
+  }
+  if (report.leftButtonPressedSampleCount === 0 || report.clickSampleCount === 0) {
+    failures.push("Left button click interaction was not observed.");
+  }
 
-	if (failures.length > 0) {
-		throw new Error(failures.join(" "));
-	}
+  if (failures.length > 0) {
+    throw new Error(failures.join(" "));
+  }
 }
 
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -1201,62 +1201,62 @@ let lineBuffer = "";
 let stoppingSampler = false;
 const readyWaiter = createReadyWaiter();
 const sampler = spawnPowerShell(buildSamplerScript(), {
-	onStdout: (chunk) => {
-		lineBuffer += chunk;
-		const lines = lineBuffer.split(/\r?\n/);
-		lineBuffer = lines.pop() ?? "";
+  onStdout: (chunk) => {
+    lineBuffer += chunk;
+    const lines = lineBuffer.split(/\r?\n/);
+    lineBuffer = lines.pop() ?? "";
 
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (!trimmed) {
-				continue;
-			}
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
 
-			let event;
-			try {
-				event = JSON.parse(trimmed);
-			} catch {
-				process.stderr.write(`[cursor-native-test] dropping non-JSON line: ${trimmed}\n`);
-				continue;
-			}
-			events.push(event);
-			if (event.type === "ready") {
-				readyWaiter.resolve();
-			}
-			if (event.asset?.id && !assets.has(event.asset.id)) {
-				assets.set(event.asset.id, event.asset);
-			}
-		}
-	},
-	onStderr: (chunk) => {
-		if (!stoppingSampler && !chunk.startsWith("#< CLIXML")) {
-			process.stderr.write(`[cursor-native-test] ${chunk}`);
-		}
-	},
+      let event;
+      try {
+        event = JSON.parse(trimmed);
+      } catch {
+        process.stderr.write(`[cursor-native-test] dropping non-JSON line: ${trimmed}\n`);
+        continue;
+      }
+      events.push(event);
+      if (event.type === "ready") {
+        readyWaiter.resolve();
+      }
+      if (event.asset?.id && !assets.has(event.asset.id)) {
+        assets.set(event.asset.id, event.asset);
+      }
+    }
+  },
+  onStderr: (chunk) => {
+    if (!stoppingSampler && !chunk.startsWith("#< CLIXML")) {
+      process.stderr.write(`[cursor-native-test] ${chunk}`);
+    }
+  },
 });
 let screenRecorder = null;
 
 try {
-	await readyWaiter.promise;
-	screenRecorder = spawnPowerShell(buildScreenRecorderScript(OUTPUT_DIR, DURATION_MS), {
-		onStderr: (chunk) => {
-			if (!chunk.startsWith("#< CLIXML") && !chunk.startsWith("<Objs")) {
-				process.stderr.write(`[screen-capture-test] ${chunk}`);
-			}
-		},
-	});
-	await new Promise((resolve) => setTimeout(resolve, 150));
-	await runPowerShell(buildMousePathScript(DURATION_MS));
-	await new Promise((resolve) => setTimeout(resolve, Math.max(250, SAMPLE_INTERVAL_MS * 3)));
-	await screenRecorder.done;
+  await readyWaiter.promise;
+  screenRecorder = spawnPowerShell(buildScreenRecorderScript(OUTPUT_DIR, DURATION_MS), {
+    onStderr: (chunk) => {
+      if (!chunk.startsWith("#< CLIXML") && !chunk.startsWith("<Objs")) {
+        process.stderr.write(`[screen-capture-test] ${chunk}`);
+      }
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await runPowerShell(buildMousePathScript(DURATION_MS));
+  await new Promise((resolve) => setTimeout(resolve, Math.max(250, SAMPLE_INTERVAL_MS * 3)));
+  await screenRecorder.done;
 } finally {
-	if (!sampler.child.killed) {
-		stoppingSampler = true;
-		sampler.child.kill();
-	}
-	if (screenRecorder && !screenRecorder.child.killed) {
-		screenRecorder.child.kill();
-	}
+  if (!sampler.child.killed) {
+    stoppingSampler = true;
+    sampler.child.kill();
+  }
+  if (screenRecorder && !screenRecorder.child.killed) {
+    screenRecorder.child.kill();
+  }
 }
 
 const samples = events.filter((event) => event.type === "sample");
@@ -1266,38 +1266,38 @@ const uniquePositions = new Set(samples.map((sample) => `${sample.x},${sample.y}
 let previousLeftButtonDown = false;
 let clickSampleCount = 0;
 for (const sample of samples) {
-	const leftButtonDown = sample.leftButtonDown === true;
-	const leftButtonPressed = sample.leftButtonPressed === true;
-	if (leftButtonPressed || (leftButtonDown && !previousLeftButtonDown)) {
-		clickSampleCount += 1;
-	}
-	previousLeftButtonDown = leftButtonDown;
+  const leftButtonDown = sample.leftButtonDown === true;
+  const leftButtonPressed = sample.leftButtonPressed === true;
+  if (leftButtonPressed || (leftButtonDown && !previousLeftButtonDown)) {
+    clickSampleCount += 1;
+  }
+  previousLeftButtonDown = leftButtonDown;
 }
 const report = {
-	outputDir: OUTPUT_DIR,
-	sampleIntervalMs: SAMPLE_INTERVAL_MS,
-	durationMs: DURATION_MS,
-	eventCount: events.length,
-	sampleCount: samples.length,
-	visibleSampleCount: samples.filter((sample) => sample.visible).length,
-	assetCount: assets.size,
-	uniqueCursorHandleCount: new Set(samples.map((sample) => sample.handle).filter(Boolean)).size,
-	uniquePositionCount: uniquePositions.size,
-	leftButtonDownSampleCount: samples.filter((sample) => sample.leftButtonDown === true).length,
-	leftButtonPressedSampleCount: samples.filter((sample) => sample.leftButtonPressed === true)
-		.length,
-	clickSampleCount,
-	errorCount: errors.length,
-	firstSample: samples[0] ?? null,
-	lastSample: samples.at(-1) ?? null,
-	assets: [...assets.values()].map((asset) => ({
-		id: asset.id,
-		width: asset.width,
-		height: asset.height,
-		hotspotX: asset.hotspotX,
-		hotspotY: asset.hotspotY,
-		cursorType: asset.cursorType ?? null,
-	})),
+  outputDir: OUTPUT_DIR,
+  sampleIntervalMs: SAMPLE_INTERVAL_MS,
+  durationMs: DURATION_MS,
+  eventCount: events.length,
+  sampleCount: samples.length,
+  visibleSampleCount: samples.filter((sample) => sample.visible).length,
+  assetCount: assets.size,
+  uniqueCursorHandleCount: new Set(samples.map((sample) => sample.handle).filter(Boolean)).size,
+  uniquePositionCount: uniquePositions.size,
+  leftButtonDownSampleCount: samples.filter((sample) => sample.leftButtonDown === true).length,
+  leftButtonPressedSampleCount: samples.filter((sample) => sample.leftButtonPressed === true)
+    .length,
+  clickSampleCount,
+  errorCount: errors.length,
+  firstSample: samples[0] ?? null,
+  lastSample: samples.at(-1) ?? null,
+  assets: [...assets.values()].map((asset) => ({
+    id: asset.id,
+    width: asset.width,
+    height: asset.height,
+    hotspotX: asset.hotspotX,
+    hotspotY: asset.hotspotY,
+    cursorType: asset.cursorType ?? null,
+  })),
 };
 const recordingData = toRecordingData(samples, assets);
 const screenFrames = readScreenFrames(OUTPUT_DIR, recordingStartTimestampMs);
@@ -1309,30 +1309,30 @@ const realCaptureVideoPath = path.join(OUTPUT_DIR, "real-capture-preview.webm");
 writeAssets(assets, OUTPUT_DIR);
 fs.writeFileSync(path.join(OUTPUT_DIR, "events.json"), JSON.stringify(events, null, 2));
 fs.writeFileSync(
-	path.join(OUTPUT_DIR, "cursor-recording-data.json"),
-	JSON.stringify(recordingData, null, 2),
+  path.join(OUTPUT_DIR, "cursor-recording-data.json"),
+  JSON.stringify(recordingData, null, 2),
 );
 fs.writeFileSync(path.join(OUTPUT_DIR, "report.json"), JSON.stringify(report, null, 2));
 fs.writeFileSync(reportHtmlPath, buildVisualReportHtml(report, recordingData));
 if (screenFrames.length > 0) {
-	fs.writeFileSync(realCaptureHtmlPath, buildRealCaptureHtml(report, recordingData, screenFrames));
-	report.screenFrameCount = screenFrames.length;
+  fs.writeFileSync(realCaptureHtmlPath, buildRealCaptureHtml(report, recordingData, screenFrames));
+  report.screenFrameCount = screenFrames.length;
 }
 
 try {
-	await writePreviewVideo(reportHtmlPath, previewVideoPath);
-	report.previewVideoPath = previewVideoPath;
+  await writePreviewVideo(reportHtmlPath, previewVideoPath);
+  report.previewVideoPath = previewVideoPath;
 } catch (error) {
-	report.previewVideoError = error instanceof Error ? error.message : String(error);
+  report.previewVideoError = error instanceof Error ? error.message : String(error);
 }
 
 if (screenFrames.length > 0) {
-	try {
-		await writePreviewVideo(realCaptureHtmlPath, realCaptureVideoPath);
-		report.realCaptureVideoPath = realCaptureVideoPath;
-	} catch (error) {
-		report.realCaptureVideoError = error instanceof Error ? error.message : String(error);
-	}
+  try {
+    await writePreviewVideo(realCaptureHtmlPath, realCaptureVideoPath);
+    report.realCaptureVideoPath = realCaptureVideoPath;
+  } catch (error) {
+    report.realCaptureVideoError = error instanceof Error ? error.message : String(error);
+  }
 }
 
 fs.writeFileSync(path.join(OUTPUT_DIR, "report.json"), JSON.stringify(report, null, 2));

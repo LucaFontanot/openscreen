@@ -3,59 +3,59 @@ import type { CursorTelemetryPoint } from "@/components/video-editor/types";
 import { nativeBridgeClient } from "../client";
 
 interface UseCursorTelemetryResult {
-	samples: CursorTelemetryPoint[];
-	loading: boolean;
-	error: string | null;
+  samples: CursorTelemetryPoint[];
+  loading: boolean;
+  error: string | null;
 }
 
 export function useCursorTelemetry(videoPath: string | null): UseCursorTelemetryResult {
-	const [samples, setSamples] = useState<CursorTelemetryPoint[]>([]);
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+  const [samples, setSamples] = useState<CursorTelemetryPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-	useEffect(() => {
-		let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-		async function loadCursorTelemetry() {
-			if (!videoPath) {
-				setSamples([]);
-				setLoading(false);
-				setError(null);
-				return;
-			}
+    async function loadCursorTelemetry() {
+      if (!videoPath) {
+        setSamples([]);
+        setLoading(false);
+        setError(null);
+        return;
+      }
 
-			setLoading(true);
-			setError(null);
+      setLoading(true);
+      setError(null);
 
-			try {
-				const nextSamples = await nativeBridgeClient.cursor.getTelemetry(videoPath);
-				if (!cancelled) {
-					setSamples(nextSamples);
-				}
-			} catch (nextError) {
-				if (!cancelled) {
-					setSamples([]);
-					setError(
-						nextError instanceof Error ? nextError.message : "Failed to load cursor telemetry",
-					);
-				}
-			} finally {
-				if (!cancelled) {
-					setLoading(false);
-				}
-			}
-		}
+      try {
+        const nextSamples = await nativeBridgeClient.cursor.getTelemetry(videoPath);
+        if (!cancelled) {
+          setSamples(nextSamples);
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setSamples([]);
+          setError(
+            nextError instanceof Error ? nextError.message : "Failed to load cursor telemetry",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
 
-		loadCursorTelemetry();
+    loadCursorTelemetry();
 
-		return () => {
-			cancelled = true;
-		};
-	}, [videoPath]);
+    return () => {
+      cancelled = true;
+    };
+  }, [videoPath]);
 
-	return {
-		samples,
-		loading,
-		error,
-	};
+  return {
+    samples,
+    loading,
+    error,
+  };
 }

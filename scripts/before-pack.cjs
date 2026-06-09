@@ -7,8 +7,8 @@ const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 
 exports.default = async function beforePack() {
-	execFileSync("node", [path.join(__dirname, "fetch-caption-model.mjs")], {
-		stdio: "inherit",
-		cwd: path.join(__dirname, ".."),
-	});
+  execFileSync("node", [path.join(__dirname, "fetch-caption-model.mjs")], {
+    stdio: "inherit",
+    cwd: path.join(__dirname, ".."),
+  });
 };

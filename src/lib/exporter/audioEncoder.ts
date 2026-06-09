@@ -1,10 +1,10 @@
 import { WebDemuxer } from "web-demuxer";
 import type {
-	AudioHooksConfig,
-	AudioHookType,
-	HookRegion,
-	SpeedRegion,
-	TrimRegion,
+  AudioHooksConfig,
+  AudioHookType,
+  HookRegion,
+  SpeedRegion,
+  TrimRegion,
 } from "@/components/video-editor/types";
 import type { ExportAudioMuxerCodec, VideoMuxer } from "./muxer";
 
@@ -13,1026 +13,1026 @@ const DECODE_BACKPRESSURE_LIMIT = 20;
 const MIN_SPEED_REGION_DELTA_MS = 0.0001;
 
 const HOOK_FREQUENCIES: Record<AudioHookType, number> = {
-	zoom: 860,
-	trim: 240,
-	speed: 520,
-	annotation: 700,
-	blur: 310,
+  zoom: 860,
+  trim: 240,
+  speed: 520,
+  annotation: 700,
+  blur: 310,
 };
 
 const HOOK_DURATIONS: Record<AudioHookType, number> = {
-	zoom: 0.08,
-	trim: 0.06,
-	speed: 0.06,
-	annotation: 0.07,
-	blur: 0.08,
+  zoom: 0.08,
+  trim: 0.06,
+  speed: 0.06,
+  annotation: 0.07,
+  blur: 0.08,
 };
 
 export interface ExportAudioCodec {
-	encoderCodec: string;
-	muxerCodec: ExportAudioMuxerCodec;
-	label: string;
-	sampleRate: number;
-	numberOfChannels: number;
+  encoderCodec: string;
+  muxerCodec: ExportAudioMuxerCodec;
+  label: string;
+  sampleRate: number;
+  numberOfChannels: number;
 }
 
 type ExportAudioCodecCandidate = Omit<ExportAudioCodec, "sampleRate" | "numberOfChannels">;
 
 const EXPORT_AUDIO_CODECS: ExportAudioCodecCandidate[] = [
-	{ encoderCodec: "mp4a.40.2", muxerCodec: "aac", label: "AAC" },
-	{ encoderCodec: "opus", muxerCodec: "opus", label: "Opus" },
+  { encoderCodec: "mp4a.40.2", muxerCodec: "aac", label: "AAC" },
+  { encoderCodec: "opus", muxerCodec: "opus", label: "Opus" },
 ];
 
 function averageChannels(sourcePlanes: Float32Array[], frame: number) {
-	let mixed = 0;
-	for (const plane of sourcePlanes) {
-		mixed += plane[frame] ?? 0;
-	}
-	return mixed / Math.max(1, sourcePlanes.length);
+  let mixed = 0;
+  for (const plane of sourcePlanes) {
+    mixed += plane[frame] ?? 0;
+  }
+  return mixed / Math.max(1, sourcePlanes.length);
 }
 
 function weightedSample(
-	sourcePlanes: Float32Array[],
-	frame: number,
-	weights: Array<[channel: number, weight: number]>,
+  sourcePlanes: Float32Array[],
+  frame: number,
+  weights: Array<[channel: number, weight: number]>,
 ) {
-	let mixed = 0;
-	let weightSum = 0;
-	for (const [channel, weight] of weights) {
-		const sample = sourcePlanes[channel]?.[frame];
-		if (typeof sample !== "number") {
-			continue;
-		}
-		mixed += sample * weight;
-		weightSum += weight;
-	}
-	return weightSum > 0 ? mixed / weightSum : averageChannels(sourcePlanes, frame);
+  let mixed = 0;
+  let weightSum = 0;
+  for (const [channel, weight] of weights) {
+    const sample = sourcePlanes[channel]?.[frame];
+    if (typeof sample !== "number") {
+      continue;
+    }
+    mixed += sample * weight;
+    weightSum += weight;
+  }
+  return weightSum > 0 ? mixed / weightSum : averageChannels(sourcePlanes, frame);
 }
 
 function getStereoDownmixWeights(sourceChannels: number) {
-	const centerWeight = Math.SQRT1_2;
-	const surroundWeight = Math.SQRT1_2;
-	const lfeWeight = 0.5;
+  const centerWeight = Math.SQRT1_2;
+  const surroundWeight = Math.SQRT1_2;
+  const lfeWeight = 0.5;
 
-	if (sourceChannels >= 8) {
-		// Windows 7.1 order: FL, FR, FC, LFE, BL, BR, SL, SR.
-		return {
-			left: [
-				[0, 1],
-				[2, centerWeight],
-				[3, lfeWeight],
-				[4, surroundWeight],
-				[6, surroundWeight],
-			] satisfies Array<[number, number]>,
-			right: [
-				[1, 1],
-				[2, centerWeight],
-				[3, lfeWeight],
-				[5, surroundWeight],
-				[7, surroundWeight],
-			] satisfies Array<[number, number]>,
-		};
-	}
+  if (sourceChannels >= 8) {
+    // Windows 7.1 order: FL, FR, FC, LFE, BL, BR, SL, SR.
+    return {
+      left: [
+        [0, 1],
+        [2, centerWeight],
+        [3, lfeWeight],
+        [4, surroundWeight],
+        [6, surroundWeight],
+      ] satisfies Array<[number, number]>,
+      right: [
+        [1, 1],
+        [2, centerWeight],
+        [3, lfeWeight],
+        [5, surroundWeight],
+        [7, surroundWeight],
+      ] satisfies Array<[number, number]>,
+    };
+  }
 
-	if (sourceChannels >= 6) {
-		// Windows 5.1 order: FL, FR, FC, LFE, BL, BR.
-		return {
-			left: [
-				[0, 1],
-				[2, centerWeight],
-				[3, lfeWeight],
-				[4, surroundWeight],
-			] satisfies Array<[number, number]>,
-			right: [
-				[1, 1],
-				[2, centerWeight],
-				[3, lfeWeight],
-				[5, surroundWeight],
-			] satisfies Array<[number, number]>,
-		};
-	}
+  if (sourceChannels >= 6) {
+    // Windows 5.1 order: FL, FR, FC, LFE, BL, BR.
+    return {
+      left: [
+        [0, 1],
+        [2, centerWeight],
+        [3, lfeWeight],
+        [4, surroundWeight],
+      ] satisfies Array<[number, number]>,
+      right: [
+        [1, 1],
+        [2, centerWeight],
+        [3, lfeWeight],
+        [5, surroundWeight],
+      ] satisfies Array<[number, number]>,
+    };
+  }
 
-	if (sourceChannels >= 4) {
-		return {
-			left: [
-				[0, 1],
-				[2, surroundWeight],
-			] satisfies Array<[number, number]>,
-			right: [
-				[1, 1],
-				[3, surroundWeight],
-			] satisfies Array<[number, number]>,
-		};
-	}
+  if (sourceChannels >= 4) {
+    return {
+      left: [
+        [0, 1],
+        [2, surroundWeight],
+      ] satisfies Array<[number, number]>,
+      right: [
+        [1, 1],
+        [3, surroundWeight],
+      ] satisfies Array<[number, number]>,
+    };
+  }
 
-	return {
-		left: [
-			[0, 1],
-			[2, centerWeight],
-		] satisfies Array<[number, number]>,
-		right: [
-			[1, 1],
-			[2, centerWeight],
-		] satisfies Array<[number, number]>,
-	};
+  return {
+    left: [
+      [0, 1],
+      [2, centerWeight],
+    ] satisfies Array<[number, number]>,
+    right: [
+      [1, 1],
+      [2, centerWeight],
+    ] satisfies Array<[number, number]>,
+  };
 }
 
 export function downmixPlanarChannelsForExport(
-	sourcePlanes: Float32Array[],
-	targetChannels: number,
+  sourcePlanes: Float32Array[],
+  targetChannels: number,
 ): Float32Array {
-	const frameCount = sourcePlanes[0]?.length ?? 0;
-	const output = new Float32Array(frameCount * targetChannels);
+  const frameCount = sourcePlanes[0]?.length ?? 0;
+  const output = new Float32Array(frameCount * targetChannels);
 
-	if (targetChannels === 1) {
-		for (let frame = 0; frame < frameCount; frame++) {
-			output[frame] = averageChannels(sourcePlanes, frame);
-		}
-		return output;
-	}
+  if (targetChannels === 1) {
+    for (let frame = 0; frame < frameCount; frame++) {
+      output[frame] = averageChannels(sourcePlanes, frame);
+    }
+    return output;
+  }
 
-	if (targetChannels !== 2) {
-		throw new Error(`Unsupported target channel count: ${targetChannels}`);
-	}
+  if (targetChannels !== 2) {
+    throw new Error(`Unsupported target channel count: ${targetChannels}`);
+  }
 
-	if (sourcePlanes.length === 1) {
-		output.set(sourcePlanes[0], 0);
-		output.set(sourcePlanes[0], frameCount);
-		return output;
-	}
+  if (sourcePlanes.length === 1) {
+    output.set(sourcePlanes[0], 0);
+    output.set(sourcePlanes[0], frameCount);
+    return output;
+  }
 
-	if (sourcePlanes.length === 2) {
-		output.set(sourcePlanes[0], 0);
-		output.set(sourcePlanes[1], frameCount);
-		return output;
-	}
+  if (sourcePlanes.length === 2) {
+    output.set(sourcePlanes[0], 0);
+    output.set(sourcePlanes[1], frameCount);
+    return output;
+  }
 
-	const weights = getStereoDownmixWeights(sourcePlanes.length);
-	for (let frame = 0; frame < frameCount; frame++) {
-		output[frame] = weightedSample(sourcePlanes, frame, weights.left);
-		output[frameCount + frame] = weightedSample(sourcePlanes, frame, weights.right);
-	}
-	return output;
+  const weights = getStereoDownmixWeights(sourcePlanes.length);
+  for (let frame = 0; frame < frameCount; frame++) {
+    output[frame] = weightedSample(sourcePlanes, frame, weights.left);
+    output[frameCount + frame] = weightedSample(sourcePlanes, frame, weights.right);
+  }
+  return output;
 }
 
 export class AudioProcessor {
-	private cancelled = false;
-
-	static async selectSupportedExportCodec(
-		sampleRate: number,
-		numberOfChannels: number,
-	): Promise<ExportAudioCodec | null> {
-		const channelOptions = [numberOfChannels];
-		if (numberOfChannels > 2) {
-			channelOptions.push(2);
-		}
-
-		if (!channelOptions.includes(1)) {
-			channelOptions.push(1);
-		}
-
-		for (const codec of EXPORT_AUDIO_CODECS) {
-			for (const channels of channelOptions) {
-				const support = await AudioEncoder.isConfigSupported({
-					codec: codec.encoderCodec,
-					sampleRate,
-					numberOfChannels: channels,
-					bitrate: AUDIO_BITRATE,
-				});
-				if (support.supported) {
-					return { ...codec, sampleRate, numberOfChannels: channels };
-				}
-			}
-		}
-
-		return null;
-	}
-
-	static async selectSupportedExportCodecForSource(
-		demuxer: WebDemuxer,
-	): Promise<ExportAudioCodec | null> {
-		let audioConfig: AudioDecoderConfig;
-		try {
-			audioConfig = await demuxer.getDecoderConfig("audio");
-		} catch {
-			return null;
-		}
-
-		const codecCheck = await AudioDecoder.isConfigSupported(audioConfig);
-		if (!codecCheck.supported) {
-			console.warn("[AudioProcessor] Audio codec not supported:", audioConfig.codec);
-			return null;
-		}
-
-		return AudioProcessor.selectSupportedExportCodec(
-			audioConfig.sampleRate || 48000,
-			audioConfig.numberOfChannels || 2,
-		);
-	}
-
-	/**
-	 * Audio export has two modes:
-	 * 1) no speed regions, background audio, or hooks -> fast WebCodecs trim-only pipeline
-	 * 2) speed regions, background audio, or hooks present -> pitch-preserving rendered timeline pipeline
-	 */
-	async process(
-		demuxer: WebDemuxer,
-		muxer: VideoMuxer,
-		videoUrl: string,
-		trimRegions: TrimRegion[] | undefined,
-		speedRegions: SpeedRegion[] | undefined,
-		backgroundAudioUrl?: string,
-		backgroundAudioRegions?: TrimRegion[],
-		backgroundAudioVolume = 0.35,
-		backgroundAudioFadeIn = 0,
-		backgroundAudioFadeOut = 0,
-		audioHooks?: AudioHooksConfig,
-		audioHooksVolume = 0.35,
-		hookSoundLayers?: Partial<Record<AudioHookType, string[]>>,
-		hookRegions?: HookRegion[],
-		hookEventTimes?: Partial<Record<AudioHookType, number[]>>,
-		readEndSec?: number,
-		exportCodec?: ExportAudioCodec,
-	): Promise<void> {
-		const sortedTrims = trimRegions ? [...trimRegions].sort((a, b) => a.startMs - b.startMs) : [];
-		const sortedSpeedRegions = speedRegions
-			? [...speedRegions]
-					.filter((region) => region.endMs - region.startMs > MIN_SPEED_REGION_DELTA_MS)
-					.sort((a, b) => a.startMs - b.startMs)
-			: [];
-
-		const hasAudioHooks = Boolean(audioHooks && Object.values(audioHooks).some(Boolean));
-		const hasHookRegions = Boolean(hookRegions && hookRegions.length > 0);
-
-		// Speed edits, background overlays, and hook SFX all require timeline-rendered audio.
-		if (sortedSpeedRegions.length > 0 || backgroundAudioUrl || hasAudioHooks || hasHookRegions) {
-			const renderedAudioBlob = await this.renderPitchPreservedTimelineAudio(
-				videoUrl,
-				sortedTrims,
-				sortedSpeedRegions,
-				backgroundAudioUrl,
-				backgroundAudioRegions ?? [],
-				backgroundAudioVolume,
-				backgroundAudioFadeIn,
-				backgroundAudioFadeOut,
-				audioHooks,
-				audioHooksVolume,
-				hookSoundLayers,
-				hookRegions,
-				hookEventTimes,
-			);
-			if (!this.cancelled) {
-				await this.muxRenderedAudioBlob(renderedAudioBlob, muxer, exportCodec);
-				return;
-			}
-		}
-
-		// No speed edits: keep the original demux/decode/encode path with trim timestamp remap.
-		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec, exportCodec);
-	}
-
-	// Trim-only path, used for projects without speed regions.
-	private async processTrimOnlyAudio(
-		demuxer: WebDemuxer,
-		muxer: VideoMuxer,
-		sortedTrims: TrimRegion[],
-		readEndSec?: number,
-		exportCodec?: ExportAudioCodec,
-	): Promise<void> {
-		let audioConfig: AudioDecoderConfig;
-		try {
-			audioConfig = await demuxer.getDecoderConfig("audio");
-		} catch {
-			console.warn("[AudioProcessor] No audio track found, skipping");
-			return;
-		}
-
-		const codecCheck = await AudioDecoder.isConfigSupported(audioConfig);
-		if (!codecCheck.supported) {
-			console.warn("[AudioProcessor] Audio codec not supported:", audioConfig.codec);
-			return;
-		}
-
-		// Phase 1: decode, skipping trimmed regions.
-		const decodedFrames: AudioData[] = [];
-
-		const decoder = new AudioDecoder({
-			output: (data: AudioData) => decodedFrames.push(data),
-			error: (e: DOMException) => console.error("[AudioProcessor] Decode error:", e),
-		});
-		decoder.configure(audioConfig);
-
-		const safeReadEndSec =
-			typeof readEndSec === "number" && Number.isFinite(readEndSec)
-				? Math.max(0, readEndSec)
-				: undefined;
-		const audioStream =
-			safeReadEndSec !== undefined
-				? demuxer.read("audio", 0, safeReadEndSec)
-				: demuxer.read("audio");
-		const reader = audioStream.getReader();
-
-		try {
-			while (!this.cancelled) {
-				const { done, value: chunk } = await reader.read();
-				if (done || !chunk) break;
-
-				const timestampMs = chunk.timestamp / 1000;
-				if (this.isInTrimRegion(timestampMs, sortedTrims)) continue;
-
-				decoder.decode(chunk);
-
-				while (decoder.decodeQueueSize > DECODE_BACKPRESSURE_LIMIT && !this.cancelled) {
-					await new Promise((resolve) => setTimeout(resolve, 1));
-				}
-			}
-		} finally {
-			try {
-				await reader.cancel();
-			} catch {
-				/* reader already closed */
-			}
-		}
-
-		if (decoder.state === "configured") {
-			await decoder.flush();
-			decoder.close();
-		}
-
-		if (this.cancelled || decodedFrames.length === 0) {
-			for (const frame of decodedFrames) frame.close();
-			return;
-		}
-
-		// Phase 2: re-encode with timestamps adjusted for trim gaps.
-		const encodedChunks: { chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }[] = [];
-
-		const encoder = new AudioEncoder({
-			output: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => {
-				encodedChunks.push({ chunk, meta });
-			},
-			error: (e: DOMException) => console.error("[AudioProcessor] Encode error:", e),
-		});
-
-		const sampleRate = audioConfig.sampleRate || 48000;
-		const channels = audioConfig.numberOfChannels || 2;
-		const selectedCodec =
-			exportCodec ?? (await AudioProcessor.selectSupportedExportCodec(sampleRate, channels));
-		if (!selectedCodec) {
-			console.warn("[AudioProcessor] No supported audio export codec, skipping audio");
-			for (const frame of decodedFrames) frame.close();
-			return;
-		}
-
-		const outputSampleRate = selectedCodec.sampleRate || sampleRate;
-		const outputChannels = selectedCodec.numberOfChannels || channels;
-		const encodeConfig: AudioEncoderConfig = {
-			codec: selectedCodec.encoderCodec,
-			sampleRate: outputSampleRate,
-			numberOfChannels: outputChannels,
-			bitrate: AUDIO_BITRATE,
-		};
-
-		const encodeSupport = await AudioEncoder.isConfigSupported(encodeConfig);
-		if (!encodeSupport.supported) {
-			console.warn(
-				`[AudioProcessor] ${selectedCodec.label} encoding not supported, skipping audio`,
-			);
-			for (const frame of decodedFrames) frame.close();
-			return;
-		}
-
-		encoder.configure(encodeConfig);
-
-		for (const audioData of decodedFrames) {
-			if (this.cancelled) {
-				audioData.close();
-				continue;
-			}
-
-			const timestampMs = audioData.timestamp / 1000;
-			const trimOffsetMs = this.computeTrimOffset(timestampMs, sortedTrims);
-			const adjustedTimestampUs = audioData.timestamp - trimOffsetMs * 1000;
-
-			const adjusted = this.cloneForEncoding(
-				audioData,
-				Math.max(0, adjustedTimestampUs),
-				outputChannels,
-			);
-			audioData.close();
-
-			encoder.encode(adjusted);
-			adjusted.close();
-		}
-
-		if (encoder.state === "configured") {
-			await encoder.flush();
-			encoder.close();
-		}
-
-		// Phase 3: flush encoded chunks to muxer.
-		for (const { chunk, meta } of encodedChunks) {
-			if (this.cancelled) break;
-			await muxer.addAudioChunk(chunk, meta);
-		}
-
-		console.log(
-			`[AudioProcessor] Processed ${decodedFrames.length} audio frames, encoded ${encodedChunks.length} chunks`,
-		);
-	}
-
-	// Speed-aware path that mirrors preview semantics (trim skipping + playbackRate regions)
-	// and also mixes in background music and hook SFX. Relies on browser media playback to
-	// preserve pitch and avoid the chipmunk effect.
-	private async renderPitchPreservedTimelineAudio(
-		videoUrl: string,
-		trimRegions: TrimRegion[],
-		speedRegions: SpeedRegion[],
-		backgroundAudioUrl?: string,
-		backgroundAudioRegions: TrimRegion[] = [],
-		backgroundAudioVolume = 0.35,
-		backgroundAudioFadeIn = 0,
-		backgroundAudioFadeOut = 0,
-		audioHooks?: AudioHooksConfig,
-		audioHooksVolume = 0.35,
-		hookSoundLayers?: Partial<Record<AudioHookType, string[]>>,
-		hookRegions: HookRegion[] = [],
-		hookEventTimes?: Partial<Record<AudioHookType, number[]>>,
-	): Promise<Blob> {
-		const sourceMedia = document.createElement("audio");
-		sourceMedia.src = videoUrl;
-		sourceMedia.preload = "auto";
-
-		const backgroundMedia = backgroundAudioUrl ? document.createElement("audio") : null;
-		if (backgroundMedia) {
-			backgroundMedia.src = backgroundAudioUrl ?? "";
-			backgroundMedia.preload = "auto";
-			backgroundMedia.loop = true;
-		}
-
-		const pitchMedia = sourceMedia as HTMLMediaElement & {
-			preservesPitch?: boolean;
-			mozPreservesPitch?: boolean;
-			webkitPreservesPitch?: boolean;
-		};
-		pitchMedia.preservesPitch = true;
-		pitchMedia.mozPreservesPitch = true;
-		pitchMedia.webkitPreservesPitch = true;
-
-		await this.waitForLoadedMetadata(sourceMedia);
-		if (backgroundMedia) {
-			await this.waitForLoadedMetadata(backgroundMedia);
-		}
-		if (this.cancelled) {
-			throw new Error("Export cancelled");
-		}
-
-		const audioContext = new AudioContext();
-		const sourceNode = audioContext.createMediaElementSource(sourceMedia);
-		const sourceGainNode = audioContext.createGain();
-		const destinationNode = audioContext.createMediaStreamDestination();
-		sourceGainNode.gain.value = 1;
-		sourceNode.connect(sourceGainNode);
-		sourceGainNode.connect(destinationNode);
-
-		const backgroundNode = backgroundMedia
-			? audioContext.createMediaElementSource(backgroundMedia)
-			: null;
-		const backgroundGainNode = backgroundNode ? audioContext.createGain() : null;
-		if (backgroundGainNode) {
-			backgroundGainNode.gain.value = 0;
-		}
-		if (backgroundNode && backgroundGainNode) {
-			backgroundNode.connect(backgroundGainNode);
-			backgroundGainNode.connect(destinationNode);
-		}
-
-		const { recorder, recordedBlobPromise } = this.startAudioRecording(destinationNode.stream);
-		let rafId: number | null = null;
-		let previousTimeMs = 0;
-		const activeHookNodes: Array<{
-			media: HTMLAudioElement;
-			node: MediaElementAudioSourceNode;
-			gain: GainNode;
-			endTimeMs?: number;
-		}> = [];
-		const sortedHookRegions = [...hookRegions].sort((a, b) => a.startMs - b.startMs);
-
-		const hasAnyHook = Boolean(audioHooks && Object.values(audioHooks).some(Boolean));
-		const hasHookClipRegions = sortedHookRegions.length > 0;
-
-		const disconnectHookNode = (entry: {
-			media: HTMLAudioElement;
-			node: MediaElementAudioSourceNode;
-			gain: GainNode;
-		}) => {
-			entry.media.pause();
-			entry.node.disconnect();
-			entry.gain.disconnect();
-		};
-
-		const playHookSound = (hook: AudioHookType) => {
-			if (!hasAnyHook || !audioHooks?.[hook]) {
-				return;
-			}
-
-			if (audioHooksVolume <= 0) {
-				return;
-			}
-
-			const fileUrls = hookSoundLayers?.[hook] ?? [];
-			if (fileUrls.length > 0) {
-				fileUrls.forEach((fileUrl) => {
-					const media = new Audio(fileUrl);
-					media.preload = "auto";
-					const node = audioContext.createMediaElementSource(media);
-					const gain = audioContext.createGain();
-					gain.gain.value = Math.min(1, Math.max(0, audioHooksVolume));
-					node.connect(gain);
-					gain.connect(destinationNode);
-					const entry = { media, node, gain };
-					activeHookNodes.push(entry);
-
-					void media.play().catch(() => undefined);
-					media.addEventListener(
-						"ended",
-						() => {
-							disconnectHookNode(entry);
-							const index = activeHookNodes.indexOf(entry);
-							if (index >= 0) {
-								activeHookNodes.splice(index, 1);
-							}
-						},
-						{ once: true },
-					);
-				});
-				return;
-			}
-
-			const oscillator = audioContext.createOscillator();
-			const gain = audioContext.createGain();
-			const now = audioContext.currentTime;
-			const peak = Math.min(0.22, Math.max(0, audioHooksVolume * 0.22));
-			if (peak <= 0) {
-				return;
-			}
-			const duration = HOOK_DURATIONS[hook] ?? 0.07;
-
-			oscillator.type = hook === "zoom" || hook === "annotation" ? "triangle" : "sine";
-			oscillator.frequency.value = HOOK_FREQUENCIES[hook] ?? 440;
-
-			gain.gain.setValueAtTime(0.0001, now);
-			gain.gain.linearRampToValueAtTime(peak, now + 0.012);
-			gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-			oscillator.connect(gain);
-			gain.connect(destinationNode);
-
-			oscillator.start(now);
-			oscillator.stop(now + duration + 0.01);
-		};
-
-		const playHookClipRegion = (region: HookRegion) => {
-			if (!region.soundUrl) {
-				return;
-			}
-
-			if (audioHooksVolume <= 0) {
-				return;
-			}
-
-			const media = new Audio(region.soundUrl);
-			media.preload = "auto";
-			const node = audioContext.createMediaElementSource(media);
-			const gain = audioContext.createGain();
-			gain.gain.value = Math.min(1, Math.max(0, audioHooksVolume));
-			node.connect(gain);
-			gain.connect(destinationNode);
-			const entry = { media, node, gain, endTimeMs: region.endMs };
-			activeHookNodes.push(entry);
-
-			void media.play().catch(() => {
-				disconnectHookNode(entry);
-				const index = activeHookNodes.indexOf(entry);
-				if (index >= 0) {
-					activeHookNodes.splice(index, 1);
-				}
-			});
-
-			media.addEventListener(
-				"ended",
-				() => {
-					disconnectHookNode(entry);
-					const index = activeHookNodes.indexOf(entry);
-					if (index >= 0) {
-						activeHookNodes.splice(index, 1);
-					}
-				},
-				{ once: true },
-			);
-		};
-
-		const hasBackgroundRegions = backgroundAudioRegions.length > 0;
-		const isBackgroundActiveAt = (timeMs: number) => {
-			if (!hasBackgroundRegions) {
-				return true;
-			}
-			return backgroundAudioRegions.some(
-				(region) => timeMs >= region.startMs && timeMs < region.endMs,
-			);
-		};
-
-		try {
-			if (audioContext.state === "suspended") {
-				await audioContext.resume();
-			}
-
-			await this.seekTo(sourceMedia, 0);
-			previousTimeMs = sourceMedia.currentTime * 1000;
-			await sourceMedia.play();
-
-			if (backgroundMedia) {
-				await this.seekTo(backgroundMedia, 0);
-				await backgroundMedia.play();
-			}
-
-			await new Promise<void>((resolve, reject) => {
-				const cleanup = () => {
-					if (rafId !== null) {
-						cancelAnimationFrame(rafId);
-						rafId = null;
-					}
-					sourceMedia.removeEventListener("error", onError);
-					sourceMedia.removeEventListener("ended", onEnded);
-				};
-
-				const onError = () => {
-					cleanup();
-					reject(new Error("Failed while rendering speed-adjusted audio timeline"));
-				};
-
-				const onEnded = () => {
-					cleanup();
-					resolve();
-				};
-
-				const tick = () => {
-					if (this.cancelled) {
-						cleanup();
-						resolve();
-						return;
-					}
-
-					const currentTimeMs = sourceMedia.currentTime * 1000;
-					const crossed = (timeMs: number) => timeMs > previousTimeMs && timeMs <= currentTimeMs;
-					const crossedPlayable = (timeMs: number) =>
-						crossed(timeMs) && !this.isInTrimRegion(timeMs, trimRegions);
-
-					if (backgroundGainNode) {
-						let bgGain = isBackgroundActiveAt(currentTimeMs)
-							? Math.min(1, Math.max(0, backgroundAudioVolume))
-							: 0;
-						if (bgGain > 0) {
-							const fadeInMs = backgroundAudioFadeIn * 1000;
-							if (fadeInMs > 0 && currentTimeMs < fadeInMs) {
-								bgGain *= currentTimeMs / fadeInMs;
-							}
-							const fadeOutMs = backgroundAudioFadeOut * 1000;
-							if (fadeOutMs > 0) {
-								const remainingMs = sourceMedia.duration * 1000 - currentTimeMs;
-								if (remainingMs < fadeOutMs) {
-									bgGain *= Math.max(0, remainingMs / fadeOutMs);
-								}
-							}
-						}
-						backgroundGainNode.gain.value = bgGain;
-					}
-
-					for (let i = activeHookNodes.length - 1; i >= 0; i -= 1) {
-						const node = activeHookNodes[i];
-						if (node.endTimeMs !== undefined && currentTimeMs >= node.endTimeMs) {
-							disconnectHookNode(node);
-							activeHookNodes.splice(i, 1);
-						}
-					}
-
-					if (hasAnyHook && hookEventTimes) {
-						(Object.keys(HOOK_FREQUENCIES) as AudioHookType[]).forEach((hook) => {
-							if (!audioHooks?.[hook]) {
-								return;
-							}
-							const events = hookEventTimes[hook] ?? [];
-							if (events.some((timeMs) => crossedPlayable(timeMs))) {
-								playHookSound(hook);
-							}
-						});
-					}
-
-					if (hasHookClipRegions) {
-						sortedHookRegions.forEach((region) => {
-							if (crossedPlayable(region.startMs)) {
-								playHookClipRegion(region);
-							}
-						});
-					}
-
-					const activeTrimRegion = this.findActiveTrimRegion(currentTimeMs, trimRegions);
-
-					if (activeTrimRegion && !sourceMedia.paused && !sourceMedia.ended) {
-						const skipToTime = activeTrimRegion.endMs / 1000;
-						if (skipToTime >= sourceMedia.duration) {
-							sourceMedia.pause();
-							cleanup();
-							resolve();
-							return;
-						}
-						sourceMedia.currentTime = skipToTime;
-						previousTimeMs = activeTrimRegion.endMs;
-					} else {
-						const activeSpeedRegion = this.findActiveSpeedRegion(currentTimeMs, speedRegions);
-						const playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
-						if (Math.abs(sourceMedia.playbackRate - playbackRate) > 0.0001) {
-							sourceMedia.playbackRate = playbackRate;
-						}
-						previousTimeMs = currentTimeMs;
-					}
-
-					if (!sourceMedia.paused && !sourceMedia.ended) {
-						rafId = requestAnimationFrame(tick);
-					} else {
-						cleanup();
-						resolve();
-					}
-				};
-
-				sourceMedia.addEventListener("error", onError, { once: true });
-				sourceMedia.addEventListener("ended", onEnded, { once: true });
-				rafId = requestAnimationFrame(tick);
-			});
-		} finally {
-			if (rafId !== null) {
-				cancelAnimationFrame(rafId);
-			}
-			sourceMedia.pause();
-			if (backgroundMedia) {
-				backgroundMedia.pause();
-			}
-			activeHookNodes.forEach(({ media, node, gain }) => {
-				media.pause();
-				media.src = "";
-				node.disconnect();
-				gain.disconnect();
-			});
-			if (recorder.state !== "inactive") {
-				recorder.stop();
-			}
-			destinationNode.stream.getTracks().forEach((track) => track.stop());
-			sourceNode.disconnect();
-			sourceGainNode.disconnect();
-			if (backgroundNode) {
-				backgroundNode.disconnect();
-			}
-			if (backgroundGainNode) {
-				backgroundGainNode.disconnect();
-			}
-			destinationNode.disconnect();
-			await audioContext.close();
-			sourceMedia.src = "";
-			sourceMedia.load();
-			if (backgroundMedia) {
-				backgroundMedia.src = "";
-				backgroundMedia.load();
-			}
-		}
-
-		const recordedBlob = await recordedBlobPromise;
-		if (this.cancelled) {
-			throw new Error("Export cancelled");
-		}
-		return recordedBlob;
-	}
-
-	// Demuxes the rendered speed-adjusted blob and feeds encoded chunks into the MP4 muxer.
-	private async muxRenderedAudioBlob(
-		blob: Blob,
-		muxer: VideoMuxer,
-		exportCodec?: ExportAudioCodec,
-	): Promise<void> {
-		if (this.cancelled) return;
-
-		const file = new File([blob], "speed-audio.webm", { type: blob.type || "audio/webm" });
-		const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
-		const demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
-
-		try {
-			await demuxer.load(file);
-			await this.processTrimOnlyAudio(demuxer, muxer, [], undefined, exportCodec);
-		} finally {
-			try {
-				demuxer.destroy();
-			} catch {
-				/* ignore */
-			}
-		}
-	}
-
-	private startAudioRecording(stream: MediaStream): {
-		recorder: MediaRecorder;
-		recordedBlobPromise: Promise<Blob>;
-	} {
-		const mimeType = this.getSupportedAudioMimeType();
-		const options: MediaRecorderOptions = {
-			audioBitsPerSecond: AUDIO_BITRATE,
-			...(mimeType ? { mimeType } : {}),
-		};
-
-		const recorder = new MediaRecorder(stream, options);
-		const chunks: Blob[] = [];
-
-		const recordedBlobPromise = new Promise<Blob>((resolve, reject) => {
-			recorder.ondataavailable = (event: BlobEvent) => {
-				if (event.data && event.data.size > 0) {
-					chunks.push(event.data);
-				}
-			};
-			recorder.onerror = () => {
-				reject(new Error("MediaRecorder failed while capturing speed-adjusted audio"));
-			};
-			recorder.onstop = () => {
-				const type = mimeType || chunks[0]?.type || "audio/webm";
-				resolve(new Blob(chunks, { type }));
-			};
-		});
-
-		recorder.start();
-		return { recorder, recordedBlobPromise };
-	}
-
-	private getSupportedAudioMimeType(): string | undefined {
-		const candidates = ["audio/webm;codecs=opus", "audio/webm"];
-		for (const candidate of candidates) {
-			if (MediaRecorder.isTypeSupported(candidate)) {
-				return candidate;
-			}
-		}
-		return undefined;
-	}
-
-	private waitForLoadedMetadata(media: HTMLMediaElement): Promise<void> {
-		if (Number.isFinite(media.duration) && media.readyState >= HTMLMediaElement.HAVE_METADATA) {
-			return Promise.resolve();
-		}
-
-		return new Promise<void>((resolve, reject) => {
-			const onLoaded = () => {
-				cleanup();
-				resolve();
-			};
-			const onError = () => {
-				cleanup();
-				reject(new Error("Failed to load media metadata for speed-adjusted audio"));
-			};
-			const cleanup = () => {
-				media.removeEventListener("loadedmetadata", onLoaded);
-				media.removeEventListener("error", onError);
-			};
-
-			media.addEventListener("loadedmetadata", onLoaded);
-			media.addEventListener("error", onError, { once: true });
-		});
-	}
-
-	private seekTo(media: HTMLMediaElement, targetSec: number): Promise<void> {
-		if (Math.abs(media.currentTime - targetSec) < 0.0001) {
-			return Promise.resolve();
-		}
-
-		return new Promise<void>((resolve, reject) => {
-			const onSeeked = () => {
-				cleanup();
-				resolve();
-			};
-			const onError = () => {
-				cleanup();
-				reject(new Error("Failed to seek media for speed-adjusted audio"));
-			};
-			const cleanup = () => {
-				media.removeEventListener("seeked", onSeeked);
-				media.removeEventListener("error", onError);
-			};
-
-			media.addEventListener("seeked", onSeeked, { once: true });
-			media.addEventListener("error", onError, { once: true });
-			media.currentTime = targetSec;
-		});
-	}
-
-	private findActiveTrimRegion(
-		currentTimeMs: number,
-		trimRegions: TrimRegion[],
-	): TrimRegion | null {
-		return (
-			trimRegions.find(
-				(region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
-			) || null
-		);
-	}
-
-	private findActiveSpeedRegion(
-		currentTimeMs: number,
-		speedRegions: SpeedRegion[],
-	): SpeedRegion | null {
-		return (
-			speedRegions.find(
-				(region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
-			) || null
-		);
-	}
-
-	private cloneForEncoding(
-		src: AudioData,
-		newTimestamp: number,
-		targetChannels: number,
-	): AudioData {
-		if (targetChannels !== src.numberOfChannels) {
-			return this.downmixWithTimestamp(src, newTimestamp, targetChannels);
-		}
-
-		if (!src.format) {
-			throw new Error("AudioData format is required for cloning");
-		}
-		const isPlanar = src.format.includes("planar");
-		const numPlanes = isPlanar ? src.numberOfChannels : 1;
-
-		let totalSize = 0;
-		for (let planeIndex = 0; planeIndex < numPlanes; planeIndex++) {
-			totalSize += src.allocationSize({ planeIndex });
-		}
-
-		const buffer = new ArrayBuffer(totalSize);
-		let offset = 0;
-		for (let planeIndex = 0; planeIndex < numPlanes; planeIndex++) {
-			const planeSize = src.allocationSize({ planeIndex });
-			src.copyTo(new Uint8Array(buffer, offset, planeSize), { planeIndex });
-			offset += planeSize;
-		}
-
-		return new AudioData({
-			format: src.format,
-			sampleRate: src.sampleRate,
-			numberOfFrames: src.numberOfFrames,
-			numberOfChannels: src.numberOfChannels,
-			timestamp: newTimestamp,
-			data: buffer,
-		});
-	}
-
-	private downmixWithTimestamp(
-		src: AudioData,
-		newTimestamp: number,
-		targetChannels: number,
-	): AudioData {
-		const sourceChannels = src.numberOfChannels;
-		const frameCount = src.numberOfFrames;
-		if (targetChannels < 1 || targetChannels > 2) {
-			throw new Error(`Unsupported target channel count: ${targetChannels}`);
-		}
-
-		const sourcePlanes = Array.from({ length: sourceChannels }, () => new Float32Array(frameCount));
-		for (let channel = 0; channel < sourceChannels; channel++) {
-			src.copyTo(sourcePlanes[channel], {
-				format: "f32-planar",
-				planeIndex: channel,
-			});
-		}
-
-		const output = downmixPlanarChannelsForExport(sourcePlanes, targetChannels);
-
-		return new AudioData({
-			format: "f32-planar",
-			sampleRate: src.sampleRate,
-			numberOfFrames: frameCount,
-			numberOfChannels: targetChannels,
-			timestamp: newTimestamp,
-			data: output.buffer instanceof ArrayBuffer ? output.buffer : output.slice().buffer,
-		});
-	}
-
-	private isInTrimRegion(timestampMs: number, trims: TrimRegion[]): boolean {
-		return trims.some((trim) => timestampMs >= trim.startMs && timestampMs < trim.endMs);
-	}
-
-	private computeTrimOffset(timestampMs: number, trims: TrimRegion[]): number {
-		let offset = 0;
-		for (const trim of trims) {
-			if (trim.endMs <= timestampMs) {
-				offset += trim.endMs - trim.startMs;
-			}
-		}
-		return offset;
-	}
-
-	cancel(): void {
-		this.cancelled = true;
-	}
+  private cancelled = false;
+
+  static async selectSupportedExportCodec(
+    sampleRate: number,
+    numberOfChannels: number,
+  ): Promise<ExportAudioCodec | null> {
+    const channelOptions = [numberOfChannels];
+    if (numberOfChannels > 2) {
+      channelOptions.push(2);
+    }
+
+    if (!channelOptions.includes(1)) {
+      channelOptions.push(1);
+    }
+
+    for (const codec of EXPORT_AUDIO_CODECS) {
+      for (const channels of channelOptions) {
+        const support = await AudioEncoder.isConfigSupported({
+          codec: codec.encoderCodec,
+          sampleRate,
+          numberOfChannels: channels,
+          bitrate: AUDIO_BITRATE,
+        });
+        if (support.supported) {
+          return { ...codec, sampleRate, numberOfChannels: channels };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  static async selectSupportedExportCodecForSource(
+    demuxer: WebDemuxer,
+  ): Promise<ExportAudioCodec | null> {
+    let audioConfig: AudioDecoderConfig;
+    try {
+      audioConfig = await demuxer.getDecoderConfig("audio");
+    } catch {
+      return null;
+    }
+
+    const codecCheck = await AudioDecoder.isConfigSupported(audioConfig);
+    if (!codecCheck.supported) {
+      console.warn("[AudioProcessor] Audio codec not supported:", audioConfig.codec);
+      return null;
+    }
+
+    return AudioProcessor.selectSupportedExportCodec(
+      audioConfig.sampleRate || 48000,
+      audioConfig.numberOfChannels || 2,
+    );
+  }
+
+  /**
+   * Audio export has two modes:
+   * 1) no speed regions, background audio, or hooks -> fast WebCodecs trim-only pipeline
+   * 2) speed regions, background audio, or hooks present -> pitch-preserving rendered timeline pipeline
+   */
+  async process(
+    demuxer: WebDemuxer,
+    muxer: VideoMuxer,
+    videoUrl: string,
+    trimRegions: TrimRegion[] | undefined,
+    speedRegions: SpeedRegion[] | undefined,
+    backgroundAudioUrl?: string,
+    backgroundAudioRegions?: TrimRegion[],
+    backgroundAudioVolume = 0.35,
+    backgroundAudioFadeIn = 0,
+    backgroundAudioFadeOut = 0,
+    audioHooks?: AudioHooksConfig,
+    audioHooksVolume = 0.35,
+    hookSoundLayers?: Partial<Record<AudioHookType, string[]>>,
+    hookRegions?: HookRegion[],
+    hookEventTimes?: Partial<Record<AudioHookType, number[]>>,
+    readEndSec?: number,
+    exportCodec?: ExportAudioCodec,
+  ): Promise<void> {
+    const sortedTrims = trimRegions ? [...trimRegions].sort((a, b) => a.startMs - b.startMs) : [];
+    const sortedSpeedRegions = speedRegions
+      ? [...speedRegions]
+          .filter((region) => region.endMs - region.startMs > MIN_SPEED_REGION_DELTA_MS)
+          .sort((a, b) => a.startMs - b.startMs)
+      : [];
+
+    const hasAudioHooks = Boolean(audioHooks && Object.values(audioHooks).some(Boolean));
+    const hasHookRegions = Boolean(hookRegions && hookRegions.length > 0);
+
+    // Speed edits, background overlays, and hook SFX all require timeline-rendered audio.
+    if (sortedSpeedRegions.length > 0 || backgroundAudioUrl || hasAudioHooks || hasHookRegions) {
+      const renderedAudioBlob = await this.renderPitchPreservedTimelineAudio(
+        videoUrl,
+        sortedTrims,
+        sortedSpeedRegions,
+        backgroundAudioUrl,
+        backgroundAudioRegions ?? [],
+        backgroundAudioVolume,
+        backgroundAudioFadeIn,
+        backgroundAudioFadeOut,
+        audioHooks,
+        audioHooksVolume,
+        hookSoundLayers,
+        hookRegions,
+        hookEventTimes,
+      );
+      if (!this.cancelled) {
+        await this.muxRenderedAudioBlob(renderedAudioBlob, muxer, exportCodec);
+        return;
+      }
+    }
+
+    // No speed edits: keep the original demux/decode/encode path with trim timestamp remap.
+    await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec, exportCodec);
+  }
+
+  // Trim-only path, used for projects without speed regions.
+  private async processTrimOnlyAudio(
+    demuxer: WebDemuxer,
+    muxer: VideoMuxer,
+    sortedTrims: TrimRegion[],
+    readEndSec?: number,
+    exportCodec?: ExportAudioCodec,
+  ): Promise<void> {
+    let audioConfig: AudioDecoderConfig;
+    try {
+      audioConfig = await demuxer.getDecoderConfig("audio");
+    } catch {
+      console.warn("[AudioProcessor] No audio track found, skipping");
+      return;
+    }
+
+    const codecCheck = await AudioDecoder.isConfigSupported(audioConfig);
+    if (!codecCheck.supported) {
+      console.warn("[AudioProcessor] Audio codec not supported:", audioConfig.codec);
+      return;
+    }
+
+    // Phase 1: decode, skipping trimmed regions.
+    const decodedFrames: AudioData[] = [];
+
+    const decoder = new AudioDecoder({
+      output: (data: AudioData) => decodedFrames.push(data),
+      error: (e: DOMException) => console.error("[AudioProcessor] Decode error:", e),
+    });
+    decoder.configure(audioConfig);
+
+    const safeReadEndSec =
+      typeof readEndSec === "number" && Number.isFinite(readEndSec)
+        ? Math.max(0, readEndSec)
+        : undefined;
+    const audioStream =
+      safeReadEndSec !== undefined
+        ? demuxer.read("audio", 0, safeReadEndSec)
+        : demuxer.read("audio");
+    const reader = audioStream.getReader();
+
+    try {
+      while (!this.cancelled) {
+        const { done, value: chunk } = await reader.read();
+        if (done || !chunk) break;
+
+        const timestampMs = chunk.timestamp / 1000;
+        if (this.isInTrimRegion(timestampMs, sortedTrims)) continue;
+
+        decoder.decode(chunk);
+
+        while (decoder.decodeQueueSize > DECODE_BACKPRESSURE_LIMIT && !this.cancelled) {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+        }
+      }
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        /* reader already closed */
+      }
+    }
+
+    if (decoder.state === "configured") {
+      await decoder.flush();
+      decoder.close();
+    }
+
+    if (this.cancelled || decodedFrames.length === 0) {
+      for (const frame of decodedFrames) frame.close();
+      return;
+    }
+
+    // Phase 2: re-encode with timestamps adjusted for trim gaps.
+    const encodedChunks: { chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }[] = [];
+
+    const encoder = new AudioEncoder({
+      output: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => {
+        encodedChunks.push({ chunk, meta });
+      },
+      error: (e: DOMException) => console.error("[AudioProcessor] Encode error:", e),
+    });
+
+    const sampleRate = audioConfig.sampleRate || 48000;
+    const channels = audioConfig.numberOfChannels || 2;
+    const selectedCodec =
+      exportCodec ?? (await AudioProcessor.selectSupportedExportCodec(sampleRate, channels));
+    if (!selectedCodec) {
+      console.warn("[AudioProcessor] No supported audio export codec, skipping audio");
+      for (const frame of decodedFrames) frame.close();
+      return;
+    }
+
+    const outputSampleRate = selectedCodec.sampleRate || sampleRate;
+    const outputChannels = selectedCodec.numberOfChannels || channels;
+    const encodeConfig: AudioEncoderConfig = {
+      codec: selectedCodec.encoderCodec,
+      sampleRate: outputSampleRate,
+      numberOfChannels: outputChannels,
+      bitrate: AUDIO_BITRATE,
+    };
+
+    const encodeSupport = await AudioEncoder.isConfigSupported(encodeConfig);
+    if (!encodeSupport.supported) {
+      console.warn(
+        `[AudioProcessor] ${selectedCodec.label} encoding not supported, skipping audio`,
+      );
+      for (const frame of decodedFrames) frame.close();
+      return;
+    }
+
+    encoder.configure(encodeConfig);
+
+    for (const audioData of decodedFrames) {
+      if (this.cancelled) {
+        audioData.close();
+        continue;
+      }
+
+      const timestampMs = audioData.timestamp / 1000;
+      const trimOffsetMs = this.computeTrimOffset(timestampMs, sortedTrims);
+      const adjustedTimestampUs = audioData.timestamp - trimOffsetMs * 1000;
+
+      const adjusted = this.cloneForEncoding(
+        audioData,
+        Math.max(0, adjustedTimestampUs),
+        outputChannels,
+      );
+      audioData.close();
+
+      encoder.encode(adjusted);
+      adjusted.close();
+    }
+
+    if (encoder.state === "configured") {
+      await encoder.flush();
+      encoder.close();
+    }
+
+    // Phase 3: flush encoded chunks to muxer.
+    for (const { chunk, meta } of encodedChunks) {
+      if (this.cancelled) break;
+      await muxer.addAudioChunk(chunk, meta);
+    }
+
+    console.log(
+      `[AudioProcessor] Processed ${decodedFrames.length} audio frames, encoded ${encodedChunks.length} chunks`,
+    );
+  }
+
+  // Speed-aware path that mirrors preview semantics (trim skipping + playbackRate regions)
+  // and also mixes in background music and hook SFX. Relies on browser media playback to
+  // preserve pitch and avoid the chipmunk effect.
+  private async renderPitchPreservedTimelineAudio(
+    videoUrl: string,
+    trimRegions: TrimRegion[],
+    speedRegions: SpeedRegion[],
+    backgroundAudioUrl?: string,
+    backgroundAudioRegions: TrimRegion[] = [],
+    backgroundAudioVolume = 0.35,
+    backgroundAudioFadeIn = 0,
+    backgroundAudioFadeOut = 0,
+    audioHooks?: AudioHooksConfig,
+    audioHooksVolume = 0.35,
+    hookSoundLayers?: Partial<Record<AudioHookType, string[]>>,
+    hookRegions: HookRegion[] = [],
+    hookEventTimes?: Partial<Record<AudioHookType, number[]>>,
+  ): Promise<Blob> {
+    const sourceMedia = document.createElement("audio");
+    sourceMedia.src = videoUrl;
+    sourceMedia.preload = "auto";
+
+    const backgroundMedia = backgroundAudioUrl ? document.createElement("audio") : null;
+    if (backgroundMedia) {
+      backgroundMedia.src = backgroundAudioUrl ?? "";
+      backgroundMedia.preload = "auto";
+      backgroundMedia.loop = true;
+    }
+
+    const pitchMedia = sourceMedia as HTMLMediaElement & {
+      preservesPitch?: boolean;
+      mozPreservesPitch?: boolean;
+      webkitPreservesPitch?: boolean;
+    };
+    pitchMedia.preservesPitch = true;
+    pitchMedia.mozPreservesPitch = true;
+    pitchMedia.webkitPreservesPitch = true;
+
+    await this.waitForLoadedMetadata(sourceMedia);
+    if (backgroundMedia) {
+      await this.waitForLoadedMetadata(backgroundMedia);
+    }
+    if (this.cancelled) {
+      throw new Error("Export cancelled");
+    }
+
+    const audioContext = new AudioContext();
+    const sourceNode = audioContext.createMediaElementSource(sourceMedia);
+    const sourceGainNode = audioContext.createGain();
+    const destinationNode = audioContext.createMediaStreamDestination();
+    sourceGainNode.gain.value = 1;
+    sourceNode.connect(sourceGainNode);
+    sourceGainNode.connect(destinationNode);
+
+    const backgroundNode = backgroundMedia
+      ? audioContext.createMediaElementSource(backgroundMedia)
+      : null;
+    const backgroundGainNode = backgroundNode ? audioContext.createGain() : null;
+    if (backgroundGainNode) {
+      backgroundGainNode.gain.value = 0;
+    }
+    if (backgroundNode && backgroundGainNode) {
+      backgroundNode.connect(backgroundGainNode);
+      backgroundGainNode.connect(destinationNode);
+    }
+
+    const { recorder, recordedBlobPromise } = this.startAudioRecording(destinationNode.stream);
+    let rafId: number | null = null;
+    let previousTimeMs = 0;
+    const activeHookNodes: Array<{
+      media: HTMLAudioElement;
+      node: MediaElementAudioSourceNode;
+      gain: GainNode;
+      endTimeMs?: number;
+    }> = [];
+    const sortedHookRegions = [...hookRegions].sort((a, b) => a.startMs - b.startMs);
+
+    const hasAnyHook = Boolean(audioHooks && Object.values(audioHooks).some(Boolean));
+    const hasHookClipRegions = sortedHookRegions.length > 0;
+
+    const disconnectHookNode = (entry: {
+      media: HTMLAudioElement;
+      node: MediaElementAudioSourceNode;
+      gain: GainNode;
+    }) => {
+      entry.media.pause();
+      entry.node.disconnect();
+      entry.gain.disconnect();
+    };
+
+    const playHookSound = (hook: AudioHookType) => {
+      if (!hasAnyHook || !audioHooks?.[hook]) {
+        return;
+      }
+
+      if (audioHooksVolume <= 0) {
+        return;
+      }
+
+      const fileUrls = hookSoundLayers?.[hook] ?? [];
+      if (fileUrls.length > 0) {
+        fileUrls.forEach((fileUrl) => {
+          const media = new Audio(fileUrl);
+          media.preload = "auto";
+          const node = audioContext.createMediaElementSource(media);
+          const gain = audioContext.createGain();
+          gain.gain.value = Math.min(1, Math.max(0, audioHooksVolume));
+          node.connect(gain);
+          gain.connect(destinationNode);
+          const entry = { media, node, gain };
+          activeHookNodes.push(entry);
+
+          void media.play().catch(() => undefined);
+          media.addEventListener(
+            "ended",
+            () => {
+              disconnectHookNode(entry);
+              const index = activeHookNodes.indexOf(entry);
+              if (index >= 0) {
+                activeHookNodes.splice(index, 1);
+              }
+            },
+            { once: true },
+          );
+        });
+        return;
+      }
+
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const now = audioContext.currentTime;
+      const peak = Math.min(0.22, Math.max(0, audioHooksVolume * 0.22));
+      if (peak <= 0) {
+        return;
+      }
+      const duration = HOOK_DURATIONS[hook] ?? 0.07;
+
+      oscillator.type = hook === "zoom" || hook === "annotation" ? "triangle" : "sine";
+      oscillator.frequency.value = HOOK_FREQUENCIES[hook] ?? 440;
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(peak, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+      oscillator.connect(gain);
+      gain.connect(destinationNode);
+
+      oscillator.start(now);
+      oscillator.stop(now + duration + 0.01);
+    };
+
+    const playHookClipRegion = (region: HookRegion) => {
+      if (!region.soundUrl) {
+        return;
+      }
+
+      if (audioHooksVolume <= 0) {
+        return;
+      }
+
+      const media = new Audio(region.soundUrl);
+      media.preload = "auto";
+      const node = audioContext.createMediaElementSource(media);
+      const gain = audioContext.createGain();
+      gain.gain.value = Math.min(1, Math.max(0, audioHooksVolume));
+      node.connect(gain);
+      gain.connect(destinationNode);
+      const entry = { media, node, gain, endTimeMs: region.endMs };
+      activeHookNodes.push(entry);
+
+      void media.play().catch(() => {
+        disconnectHookNode(entry);
+        const index = activeHookNodes.indexOf(entry);
+        if (index >= 0) {
+          activeHookNodes.splice(index, 1);
+        }
+      });
+
+      media.addEventListener(
+        "ended",
+        () => {
+          disconnectHookNode(entry);
+          const index = activeHookNodes.indexOf(entry);
+          if (index >= 0) {
+            activeHookNodes.splice(index, 1);
+          }
+        },
+        { once: true },
+      );
+    };
+
+    const hasBackgroundRegions = backgroundAudioRegions.length > 0;
+    const isBackgroundActiveAt = (timeMs: number) => {
+      if (!hasBackgroundRegions) {
+        return true;
+      }
+      return backgroundAudioRegions.some(
+        (region) => timeMs >= region.startMs && timeMs < region.endMs,
+      );
+    };
+
+    try {
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+
+      await this.seekTo(sourceMedia, 0);
+      previousTimeMs = sourceMedia.currentTime * 1000;
+      await sourceMedia.play();
+
+      if (backgroundMedia) {
+        await this.seekTo(backgroundMedia, 0);
+        await backgroundMedia.play();
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          sourceMedia.removeEventListener("error", onError);
+          sourceMedia.removeEventListener("ended", onEnded);
+        };
+
+        const onError = () => {
+          cleanup();
+          reject(new Error("Failed while rendering speed-adjusted audio timeline"));
+        };
+
+        const onEnded = () => {
+          cleanup();
+          resolve();
+        };
+
+        const tick = () => {
+          if (this.cancelled) {
+            cleanup();
+            resolve();
+            return;
+          }
+
+          const currentTimeMs = sourceMedia.currentTime * 1000;
+          const crossed = (timeMs: number) => timeMs > previousTimeMs && timeMs <= currentTimeMs;
+          const crossedPlayable = (timeMs: number) =>
+            crossed(timeMs) && !this.isInTrimRegion(timeMs, trimRegions);
+
+          if (backgroundGainNode) {
+            let bgGain = isBackgroundActiveAt(currentTimeMs)
+              ? Math.min(1, Math.max(0, backgroundAudioVolume))
+              : 0;
+            if (bgGain > 0) {
+              const fadeInMs = backgroundAudioFadeIn * 1000;
+              if (fadeInMs > 0 && currentTimeMs < fadeInMs) {
+                bgGain *= currentTimeMs / fadeInMs;
+              }
+              const fadeOutMs = backgroundAudioFadeOut * 1000;
+              if (fadeOutMs > 0) {
+                const remainingMs = sourceMedia.duration * 1000 - currentTimeMs;
+                if (remainingMs < fadeOutMs) {
+                  bgGain *= Math.max(0, remainingMs / fadeOutMs);
+                }
+              }
+            }
+            backgroundGainNode.gain.value = bgGain;
+          }
+
+          for (let i = activeHookNodes.length - 1; i >= 0; i -= 1) {
+            const node = activeHookNodes[i];
+            if (node.endTimeMs !== undefined && currentTimeMs >= node.endTimeMs) {
+              disconnectHookNode(node);
+              activeHookNodes.splice(i, 1);
+            }
+          }
+
+          if (hasAnyHook && hookEventTimes) {
+            (Object.keys(HOOK_FREQUENCIES) as AudioHookType[]).forEach((hook) => {
+              if (!audioHooks?.[hook]) {
+                return;
+              }
+              const events = hookEventTimes[hook] ?? [];
+              if (events.some((timeMs) => crossedPlayable(timeMs))) {
+                playHookSound(hook);
+              }
+            });
+          }
+
+          if (hasHookClipRegions) {
+            sortedHookRegions.forEach((region) => {
+              if (crossedPlayable(region.startMs)) {
+                playHookClipRegion(region);
+              }
+            });
+          }
+
+          const activeTrimRegion = this.findActiveTrimRegion(currentTimeMs, trimRegions);
+
+          if (activeTrimRegion && !sourceMedia.paused && !sourceMedia.ended) {
+            const skipToTime = activeTrimRegion.endMs / 1000;
+            if (skipToTime >= sourceMedia.duration) {
+              sourceMedia.pause();
+              cleanup();
+              resolve();
+              return;
+            }
+            sourceMedia.currentTime = skipToTime;
+            previousTimeMs = activeTrimRegion.endMs;
+          } else {
+            const activeSpeedRegion = this.findActiveSpeedRegion(currentTimeMs, speedRegions);
+            const playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+            if (Math.abs(sourceMedia.playbackRate - playbackRate) > 0.0001) {
+              sourceMedia.playbackRate = playbackRate;
+            }
+            previousTimeMs = currentTimeMs;
+          }
+
+          if (!sourceMedia.paused && !sourceMedia.ended) {
+            rafId = requestAnimationFrame(tick);
+          } else {
+            cleanup();
+            resolve();
+          }
+        };
+
+        sourceMedia.addEventListener("error", onError, { once: true });
+        sourceMedia.addEventListener("ended", onEnded, { once: true });
+        rafId = requestAnimationFrame(tick);
+      });
+    } finally {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      sourceMedia.pause();
+      if (backgroundMedia) {
+        backgroundMedia.pause();
+      }
+      activeHookNodes.forEach(({ media, node, gain }) => {
+        media.pause();
+        media.src = "";
+        node.disconnect();
+        gain.disconnect();
+      });
+      if (recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      destinationNode.stream.getTracks().forEach((track) => track.stop());
+      sourceNode.disconnect();
+      sourceGainNode.disconnect();
+      if (backgroundNode) {
+        backgroundNode.disconnect();
+      }
+      if (backgroundGainNode) {
+        backgroundGainNode.disconnect();
+      }
+      destinationNode.disconnect();
+      await audioContext.close();
+      sourceMedia.src = "";
+      sourceMedia.load();
+      if (backgroundMedia) {
+        backgroundMedia.src = "";
+        backgroundMedia.load();
+      }
+    }
+
+    const recordedBlob = await recordedBlobPromise;
+    if (this.cancelled) {
+      throw new Error("Export cancelled");
+    }
+    return recordedBlob;
+  }
+
+  // Demuxes the rendered speed-adjusted blob and feeds encoded chunks into the MP4 muxer.
+  private async muxRenderedAudioBlob(
+    blob: Blob,
+    muxer: VideoMuxer,
+    exportCodec?: ExportAudioCodec,
+  ): Promise<void> {
+    if (this.cancelled) return;
+
+    const file = new File([blob], "speed-audio.webm", { type: blob.type || "audio/webm" });
+    const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
+    const demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
+
+    try {
+      await demuxer.load(file);
+      await this.processTrimOnlyAudio(demuxer, muxer, [], undefined, exportCodec);
+    } finally {
+      try {
+        demuxer.destroy();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  private startAudioRecording(stream: MediaStream): {
+    recorder: MediaRecorder;
+    recordedBlobPromise: Promise<Blob>;
+  } {
+    const mimeType = this.getSupportedAudioMimeType();
+    const options: MediaRecorderOptions = {
+      audioBitsPerSecond: AUDIO_BITRATE,
+      ...(mimeType ? { mimeType } : {}),
+    };
+
+    const recorder = new MediaRecorder(stream, options);
+    const chunks: Blob[] = [];
+
+    const recordedBlobPromise = new Promise<Blob>((resolve, reject) => {
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data && event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      recorder.onerror = () => {
+        reject(new Error("MediaRecorder failed while capturing speed-adjusted audio"));
+      };
+      recorder.onstop = () => {
+        const type = mimeType || chunks[0]?.type || "audio/webm";
+        resolve(new Blob(chunks, { type }));
+      };
+    });
+
+    recorder.start();
+    return { recorder, recordedBlobPromise };
+  }
+
+  private getSupportedAudioMimeType(): string | undefined {
+    const candidates = ["audio/webm;codecs=opus", "audio/webm"];
+    for (const candidate of candidates) {
+      if (MediaRecorder.isTypeSupported(candidate)) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
+  private waitForLoadedMetadata(media: HTMLMediaElement): Promise<void> {
+    if (Number.isFinite(media.duration) && media.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const onLoaded = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error("Failed to load media metadata for speed-adjusted audio"));
+      };
+      const cleanup = () => {
+        media.removeEventListener("loadedmetadata", onLoaded);
+        media.removeEventListener("error", onError);
+      };
+
+      media.addEventListener("loadedmetadata", onLoaded);
+      media.addEventListener("error", onError, { once: true });
+    });
+  }
+
+  private seekTo(media: HTMLMediaElement, targetSec: number): Promise<void> {
+    if (Math.abs(media.currentTime - targetSec) < 0.0001) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const onSeeked = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error("Failed to seek media for speed-adjusted audio"));
+      };
+      const cleanup = () => {
+        media.removeEventListener("seeked", onSeeked);
+        media.removeEventListener("error", onError);
+      };
+
+      media.addEventListener("seeked", onSeeked, { once: true });
+      media.addEventListener("error", onError, { once: true });
+      media.currentTime = targetSec;
+    });
+  }
+
+  private findActiveTrimRegion(
+    currentTimeMs: number,
+    trimRegions: TrimRegion[],
+  ): TrimRegion | null {
+    return (
+      trimRegions.find(
+        (region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
+      ) || null
+    );
+  }
+
+  private findActiveSpeedRegion(
+    currentTimeMs: number,
+    speedRegions: SpeedRegion[],
+  ): SpeedRegion | null {
+    return (
+      speedRegions.find(
+        (region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
+      ) || null
+    );
+  }
+
+  private cloneForEncoding(
+    src: AudioData,
+    newTimestamp: number,
+    targetChannels: number,
+  ): AudioData {
+    if (targetChannels !== src.numberOfChannels) {
+      return this.downmixWithTimestamp(src, newTimestamp, targetChannels);
+    }
+
+    if (!src.format) {
+      throw new Error("AudioData format is required for cloning");
+    }
+    const isPlanar = src.format.includes("planar");
+    const numPlanes = isPlanar ? src.numberOfChannels : 1;
+
+    let totalSize = 0;
+    for (let planeIndex = 0; planeIndex < numPlanes; planeIndex++) {
+      totalSize += src.allocationSize({ planeIndex });
+    }
+
+    const buffer = new ArrayBuffer(totalSize);
+    let offset = 0;
+    for (let planeIndex = 0; planeIndex < numPlanes; planeIndex++) {
+      const planeSize = src.allocationSize({ planeIndex });
+      src.copyTo(new Uint8Array(buffer, offset, planeSize), { planeIndex });
+      offset += planeSize;
+    }
+
+    return new AudioData({
+      format: src.format,
+      sampleRate: src.sampleRate,
+      numberOfFrames: src.numberOfFrames,
+      numberOfChannels: src.numberOfChannels,
+      timestamp: newTimestamp,
+      data: buffer,
+    });
+  }
+
+  private downmixWithTimestamp(
+    src: AudioData,
+    newTimestamp: number,
+    targetChannels: number,
+  ): AudioData {
+    const sourceChannels = src.numberOfChannels;
+    const frameCount = src.numberOfFrames;
+    if (targetChannels < 1 || targetChannels > 2) {
+      throw new Error(`Unsupported target channel count: ${targetChannels}`);
+    }
+
+    const sourcePlanes = Array.from({ length: sourceChannels }, () => new Float32Array(frameCount));
+    for (let channel = 0; channel < sourceChannels; channel++) {
+      src.copyTo(sourcePlanes[channel], {
+        format: "f32-planar",
+        planeIndex: channel,
+      });
+    }
+
+    const output = downmixPlanarChannelsForExport(sourcePlanes, targetChannels);
+
+    return new AudioData({
+      format: "f32-planar",
+      sampleRate: src.sampleRate,
+      numberOfFrames: frameCount,
+      numberOfChannels: targetChannels,
+      timestamp: newTimestamp,
+      data: output.buffer instanceof ArrayBuffer ? output.buffer : output.slice().buffer,
+    });
+  }
+
+  private isInTrimRegion(timestampMs: number, trims: TrimRegion[]): boolean {
+    return trims.some((trim) => timestampMs >= trim.startMs && timestampMs < trim.endMs);
+  }
+
+  private computeTrimOffset(timestampMs: number, trims: TrimRegion[]): number {
+    let offset = 0;
+    for (const trim of trims) {
+      if (trim.endMs <= timestampMs) {
+        offset += trim.endMs - trim.startMs;
+      }
+    }
+    return offset;
+  }
+
+  cancel(): void {
+    this.cancelled = true;
+  }
 }

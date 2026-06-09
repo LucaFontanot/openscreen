@@ -23,40 +23,40 @@ const MAX_LEADING_SCAN_SEC = 15 * 60;
  * the first phrase and wastes work). Returned `trimSec` must be added back to every segment time.
  */
 export function trimLeadingSilenceMono16k(samples: Float32Array): {
-	samples: Float32Array;
-	trimSec: number;
+  samples: Float32Array;
+  trimSec: number;
 } {
-	if (samples.length < WINDOW_SAMPLES) {
-		return { samples, trimSec: 0 };
-	}
+  if (samples.length < WINDOW_SAMPLES) {
+    return { samples, trimSec: 0 };
+  }
 
-	const maxIndex = Math.min(
-		samples.length - WINDOW_SAMPLES,
-		Math.floor(MAX_LEADING_SCAN_SEC * SAMPLE_RATE),
-	);
+  const maxIndex = Math.min(
+    samples.length - WINDOW_SAMPLES,
+    Math.floor(MAX_LEADING_SCAN_SEC * SAMPLE_RATE),
+  );
 
-	let firstSpeechSample = -1;
-	for (let i = 0; i <= maxIndex; i += HOP_SAMPLES) {
-		let peak = 0;
-		for (let j = 0; j < WINDOW_SAMPLES; j++) {
-			peak = Math.max(peak, Math.abs(samples[i + j]!));
-		}
-		if (peak > PEAK_THRESHOLD) {
-			firstSpeechSample = i;
-			break;
-		}
-	}
+  let firstSpeechSample = -1;
+  for (let i = 0; i <= maxIndex; i += HOP_SAMPLES) {
+    let peak = 0;
+    for (let j = 0; j < WINDOW_SAMPLES; j++) {
+      peak = Math.max(peak, Math.abs(samples[i + j]!));
+    }
+    if (peak > PEAK_THRESHOLD) {
+      firstSpeechSample = i;
+      break;
+    }
+  }
 
-	if (firstSpeechSample <= 0) {
-		return { samples, trimSec: 0 };
-	}
+  if (firstSpeechSample <= 0) {
+    return { samples, trimSec: 0 };
+  }
 
-	const preRollSamples = Math.round(PRE_ROLL_SEC * SAMPLE_RATE);
-	const start = Math.max(0, firstSpeechSample - preRollSamples);
-	return {
-		samples: samples.subarray(start),
-		trimSec: start / SAMPLE_RATE,
-	};
+  const preRollSamples = Math.round(PRE_ROLL_SEC * SAMPLE_RATE);
+  const start = Math.max(0, firstSpeechSample - preRollSamples);
+  return {
+    samples: samples.subarray(start),
+    trimSec: start / SAMPLE_RATE,
+  };
 }
 
 /**
@@ -64,15 +64,15 @@ export function trimLeadingSilenceMono16k(samples: Float32Array): {
  * Shift trim regions by the same offset so `segmentOverlapsTrim` still uses consistent coordinates.
  */
 export function shiftTrimRegionsMsForCaptionBuffer(
-	regions: TrimRegion[],
-	trimMs: number,
+  regions: TrimRegion[],
+  trimMs: number,
 ): TrimRegion[] {
-	if (trimMs <= 0) return regions;
-	return regions
-		.map((r) => ({
-			...r,
-			startMs: Math.max(0, r.startMs - trimMs),
-			endMs: Math.max(0, r.endMs - trimMs),
-		}))
-		.filter((r) => r.endMs > r.startMs);
+  if (trimMs <= 0) return regions;
+  return regions
+    .map((r) => ({
+      ...r,
+      startMs: Math.max(0, r.startMs - trimMs),
+      endMs: Math.max(0, r.endMs - trimMs),
+    }))
+    .filter((r) => r.endMs > r.startMs);
 }

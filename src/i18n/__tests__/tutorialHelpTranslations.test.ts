@@ -15,59 +15,59 @@ import zhCNDialogs from "@/i18n/locales/zh-CN/dialogs.json";
 import zhTWDialogs from "@/i18n/locales/zh-TW/dialogs.json";
 
 const tutorialHelpKeys = [
-	"triggerLabel",
-	"title",
-	"description",
-	"explanationBefore",
-	"remove",
-	"explanationMiddle",
-	"covered",
-	"explanationAfter",
-	"visualExample",
-	"removed",
-	"kept",
-	"part1",
-	"part2",
-	"part3",
-	"finalVideo",
-	"step1Title",
-	"step1DescriptionBefore",
-	"step1DescriptionAfter",
-	"step2Title",
-	"step2Description",
+  "triggerLabel",
+  "title",
+  "description",
+  "explanationBefore",
+  "remove",
+  "explanationMiddle",
+  "covered",
+  "explanationAfter",
+  "visualExample",
+  "removed",
+  "kept",
+  "part1",
+  "part2",
+  "part3",
+  "finalVideo",
+  "step1Title",
+  "step1DescriptionBefore",
+  "step1DescriptionAfter",
+  "step2Title",
+  "step2Description",
 ] as const;
 
 const keysThatMayBeEmpty = new Set<(typeof tutorialHelpKeys)[number]>(["step1DescriptionBefore"]);
 
 const dialogsByLocale = {
-	en: enDialogs,
-	ar: arDialogs,
-	es: esDialogs,
-	fr: frDialogs,
-	it: itDialogs,
-	"ja-JP": jaJPDialogs,
-	"ko-KR": koKRDialogs,
-	ru: ruDialogs,
-	tr: trDialogs,
-	vi: viDialogs,
-	"pt-BR": ptBRDialogs,
-	"zh-CN": zhCNDialogs,
-	"zh-TW": zhTWDialogs,
+  en: enDialogs,
+  ar: arDialogs,
+  es: esDialogs,
+  fr: frDialogs,
+  it: itDialogs,
+  "ja-JP": jaJPDialogs,
+  "ko-KR": koKRDialogs,
+  ru: ruDialogs,
+  tr: trDialogs,
+  vi: viDialogs,
+  "pt-BR": ptBRDialogs,
+  "zh-CN": zhCNDialogs,
+  "zh-TW": zhTWDialogs,
 } satisfies Record<Locale, { tutorial: Record<string, unknown> }>;
 
 describe("TutorialHelp translations", () => {
-	it("defines every tutorial help key for each supported locale", () => {
-		for (const locale of SUPPORTED_LOCALES) {
-			const tutorial = dialogsByLocale[locale].tutorial;
+  it("defines every tutorial help key for each supported locale", () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      const tutorial = dialogsByLocale[locale].tutorial;
 
-			for (const key of tutorialHelpKeys) {
-				const message = tutorial[key];
-				const label = `${locale} dialogs.tutorial.${key}`;
-				expect(message, label).toEqual(expect.any(String));
-				if (!keysThatMayBeEmpty.has(key)) {
-					expect((message as string).trim().length, label).toBeGreaterThan(0);
-				}
-			}
-		}
-	});
+      for (const key of tutorialHelpKeys) {
+        const message = tutorial[key];
+        const label = `${locale} dialogs.tutorial.${key}`;
+        expect(message, label).toEqual(expect.any(String));
+        if (!keysThatMayBeEmpty.has(key)) {
+          expect((message as string).trim().length, label).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
 });
