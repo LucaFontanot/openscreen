@@ -35,7 +35,7 @@ import type {
   ProjectFileResult,
   ProjectPathResult,
 } from "../../src/native/contracts";
-import { buildFFmpegArgs, getFFmpegCapabilities, getFFmpegPath } from "../ffmpeg/ffmpegManager";
+import { buildVideoOnlyArgs, buildAudioMuxArgs, getFFmpegCapabilities, getFFmpegPath } from "../ffmpeg/ffmpegManager";
 import { mainT } from "../i18n";
 import { RECORDINGS_DIR } from "../main";
 import { createCursorRecordingSession } from "../native-bridge/cursor/recording/factory";
@@ -3051,6 +3051,8 @@ export function registerIpcHandlers(
     {
       process: ChildProcess;
       outputPath: string;
+      // Step 1 produces video-only; step 2 muxes in audio
+      videoOnlyPath: string;
       frameCount: number;
       startedAt: number;
       finished: boolean;
@@ -3060,6 +3062,12 @@ export function registerIpcHandlers(
       pid: number | undefined;
       heartbeatTimer: ReturnType<typeof setInterval> | undefined;
       cancelledBy: string | null; // "user" | "error:<reason>"
+      // Audio config preserved for step 2
+      audioSourcePath?: string;
+      hasAudio?: boolean;
+      backgroundAudioPath?: string;
+      backgroundAudioVolume?: number;
+      backgroundMusicFadeIn?: number;
     }
   >();
 
@@ -3157,24 +3165,38 @@ export function registerIpcHandlers(
           }
         }
 
-        const args = buildFFmpegArgs({
+        console.log(
+          `[FFmpeg] Audio config resolved:\n` +
+            `  audioSourcePath (original): ${config.audioSourcePath || "(none)"}\n` +
+            `  audioSourcePath (resolved):  ${resolvedAudioPath || "(none)"}\n` +
+            `  hasAudio (config): ${config.hasAudio ?? false}\n` +
+            `  hasAudio (resolved): ${hasAudio}\n` +
+            `  backgroundAudioPath (original): ${config.backgroundAudioPath || "(none)"}\n` +
+            `  backgroundAudioPath (resolved):  ${resolvedBackgroundPath || "(none)"}\n` +
+            `  backgroundAudioVolume: ${config.backgroundAudioVolume ?? 0.35}\n` +
+            `  backgroundMusicFadeIn: ${config.backgroundMusicFadeIn ?? 0}`,
+        );
+
+        // Step 1: Video-only export (pipe:0 → temp file).
+        // We export video first without audio because raw H.264 from pipe:0 has no
+        // timestamps, which prevents the MP4 muxer from interleaving audio packets.
+        // Step 2 (in ffmpegExportFinish) will add audio using the now-properly-timestamped
+        // video file.
+        const videoOnlyPath = path.join(tempDir, `${sessionId}-video.mp4`);
+        const muxedOutputPath = outputPath; // final output after step 2
+
+        const videoArgs = buildVideoOnlyArgs({
           width: config.width,
           height: config.height,
           frameRate: config.frameRate,
           encoder: config.encoder,
           bitrate: config.bitrate,
-          outputPath,
-          audioSourcePath: resolvedAudioPath,
-          hasAudio,
-          backgroundAudioPath: resolvedBackgroundPath,
-          backgroundAudioVolume: config.backgroundAudioVolume ?? 0.35,
-          backgroundMusicFadeIn: config.backgroundMusicFadeIn ?? 0,
-          backgroundMusicFadeOut: config.backgroundMusicFadeOut ?? 0,
+          outputPath: videoOnlyPath,
         });
 
-        console.log(`[FFmpeg] Starting export: ${ffmpegPath} ${args.join(" ")}`);
+        console.log(`[FFmpeg] Step 1 (video-only): ${ffmpegPath} ${videoArgs.join(" ")}`);
 
-        const ffmpegProcess = spawn(ffmpegPath, args, {
+        const ffmpegProcess = spawn(ffmpegPath, videoArgs, {
           stdio: ["pipe", "pipe", "pipe"],
         });
 
@@ -3195,7 +3217,8 @@ export function registerIpcHandlers(
 
         ffmpegSessions.set(sessionId, {
           process: ffmpegProcess,
-          outputPath,
+          outputPath: muxedOutputPath,
+          videoOnlyPath,
           frameCount: 0,
           startedAt: now,
           finished: false,
@@ -3205,6 +3228,11 @@ export function registerIpcHandlers(
           pid,
           heartbeatTimer: undefined,
           cancelledBy: null,
+          audioSourcePath: resolvedAudioPath,
+          hasAudio,
+          backgroundAudioPath: resolvedBackgroundPath,
+          backgroundAudioVolume: config.backgroundAudioVolume ?? 0.35,
+          backgroundMusicFadeIn: config.backgroundMusicFadeIn ?? 0,
         });
 
         const session = ffmpegSessions.get(sessionId)!;
@@ -3213,15 +3241,18 @@ export function registerIpcHandlers(
         ffmpegProcess.stderr?.on("data", (data: Buffer) => {
           const text = data.toString();
           session.stderr += text;
-          // Log all stderr lines at verbose level; surface warnings/errors prominently
+          // Log all stderr lines — critical for debugging audio issues
           const trimmed = text.trim();
           if (trimmed) {
-            if (
-              trimmed.includes("Error") ||
-              trimmed.includes("error") ||
-              trimmed.includes("Warning")
-            ) {
+            const isError = trimmed.includes("Error") || trimmed.includes("error");
+            const isWarn = trimmed.includes("Warning") || trimmed.includes("warn");
+            const isAudio = /audio|stream|filter|map|input|output/i.test(trimmed);
+            if (isError || isWarn) {
               console.warn(`[FFmpeg:${sessionId}] stderr: ${trimmed}`);
+            } else if (isAudio) {
+              console.log(`[FFmpeg:${sessionId}] stderr (audio): ${trimmed}`);
+            } else {
+              console.log(`[FFmpeg:${sessionId}] stderr: ${trimmed}`);
             }
           }
         });
@@ -3339,45 +3370,99 @@ export function registerIpcHandlers(
       session.finished = true;
       clearInterval(session.heartbeatTimer);
 
-      // Close stdin to signal end of input
+      // Close stdin to signal end of input (step 1: video-only)
       if (session.process.stdin && !session.process.stdin.destroyed) {
         session.process.stdin.end();
       }
 
-      // Wait for FFmpeg to finish
-      const result = await session.exitPromise;
+      // Wait for step 1 (video-only) to finish
+      const step1Result = await session.exitPromise;
       const elapsed = ((Date.now() - session.startedAt) / 1000).toFixed(1);
       console.log(
-        `[FFmpeg:${sessionId}] Export finished: ${session.frameCount} frames in ${elapsed}s ` +
-          `(${(session.frameCount / Math.max(0.001, (Date.now() - session.startedAt) / 1000)).toFixed(1)} fps avg, exit code: ${result.code}, signal: ${result.signal})`,
+        `[FFmpeg:${sessionId}] Step 1 (video-only) finished: ${session.frameCount} frames in ${elapsed}s ` +
+          `(${(session.frameCount / Math.max(0.001, (Date.now() - session.startedAt) / 1000)).toFixed(1)} fps avg, exit code: ${step1Result.code})`,
       );
 
-      if (result.code !== 0) {
+      if (step1Result.code !== 0) {
         const stderrTail = session.stderr?.trim().split("\n").slice(-20).join("\n") || "";
         console.error(
-          `[FFmpeg:${sessionId}] Export failed with code ${result.code}.\nStderr tail:\n${stderrTail || "(empty)"}`,
+          `[FFmpeg:${sessionId}] Step 1 failed with code ${step1Result.code}.\nStderr tail:\n${stderrTail || "(empty)"}`,
         );
+        await fs.unlink(session.videoOnlyPath).catch(() => {});
         ffmpegSessions.delete(sessionId);
         return {
           success: false,
-          error:
-            `FFmpeg exited with code ${result.code}: ${stderrTail.split("\n").pop() || ""}`.trim(),
+          error: `FFmpeg exited with code ${step1Result.code}: ${stderrTail.split("\n").pop() || ""}`.trim(),
         };
       }
 
-      // Verify output file exists
+      // Verify video-only output
+      try {
+        const videoStat = await fs.stat(session.videoOnlyPath);
+        console.log(
+          `[FFmpeg:${sessionId}] Step 1 output: ${session.videoOnlyPath} ` +
+            `(${(videoStat.size / 1024 / 1024).toFixed(1)} MB)`,
+        );
+      } catch {
+        const stderrTail = session.stderr?.trim().split("\n").slice(-20).join("\n") || "";
+        console.error(
+          `[FFmpeg:${sessionId}] Step 1 output file not found.\nStderr tail:\n${stderrTail || "(empty)"}`,
+        );
+        ffmpegSessions.delete(sessionId);
+        return { success: false, error: "FFmpeg video output file not found" };
+      }
+
+      // Step 2: Mux audio into the video file
+      const muxArgs = buildAudioMuxArgs({
+        videoInputPath: session.videoOnlyPath,
+        audioSourcePath: session.audioSourcePath,
+        hasAudio: session.hasAudio,
+        backgroundAudioPath: session.backgroundAudioPath,
+        backgroundAudioVolume: session.backgroundAudioVolume,
+        backgroundMusicFadeIn: session.backgroundMusicFadeIn,
+        outputPath: session.outputPath,
+      });
+
+      if (muxArgs) {
+        console.log(`[FFmpeg:${sessionId}] Step 2 (audio mux): ${getFFmpegPath()} ${muxArgs.join(" ")}`);
+
+        const muxResult = await runProcess(getFFmpegPath()!, muxArgs);
+        console.log(
+          `[FFmpeg:${sessionId}] Step 2 finished: exit code ${muxResult.code}`,
+        );
+
+        if (muxResult.code !== 0) {
+          const stderrTail = (muxResult.stderr || "").trim().split("\n").slice(-20).join("\n") || "";
+          console.error(
+            `[FFmpeg:${sessionId}] Step 2 audio mux failed with code ${muxResult.code}.\nStderr:\n${stderrTail || "(empty)"}`,
+          );
+          await fs.unlink(session.videoOnlyPath).catch(() => {});
+          await fs.unlink(session.outputPath).catch(() => {});
+          ffmpegSessions.delete(sessionId);
+          return { success: false, error: `Audio mux failed: ${stderrTail.split("\n").pop() || ""}`.trim() };
+        }
+
+        // Clean up video-only temp file (no longer needed)
+        await fs.unlink(session.videoOnlyPath).catch(() => {});
+      } else {
+        // No audio to mux — just rename the video-only file to the final output path
+        console.log(`[FFmpeg:${sessionId}] No audio to mux — video-only is final output`);
+        try {
+          await fs.rename(session.videoOnlyPath, session.outputPath);
+        } catch {
+          await fs.copyFile(session.videoOnlyPath, session.outputPath);
+        }
+      }
+
+      // Verify final output
       try {
         const outputStat = await fs.stat(session.outputPath);
         console.log(
-          `[FFmpeg:${sessionId}] Output file: ${session.outputPath} ` +
+          `[FFmpeg:${sessionId}] Final output: ${session.outputPath} ` +
             `(${(outputStat.size / 1024 / 1024).toFixed(1)} MB)`,
         );
         await fs.access(session.outputPath);
       } catch {
-        const stderrTail = session.stderr?.trim().split("\n").slice(-20).join("\n") || "";
-        console.error(
-          `[FFmpeg:${sessionId}] Output file not found.\nStderr tail:\n${stderrTail || "(empty)"}`,
-        );
         ffmpegSessions.delete(sessionId);
         return { success: false, error: "FFmpeg output file not found" };
       }
@@ -3391,15 +3476,13 @@ export function registerIpcHandlers(
       });
 
       if (saveResult.canceled || !saveResult.filePath) {
-        // Clean up temp file
         await fs.unlink(session.outputPath).catch(() => {});
         ffmpegSessions.delete(sessionId);
         return { success: false, canceled: true, message: "Export canceled" };
       }
 
-      // Move temp file to user-chosen location
+      // Copy temp file to user-chosen location
       await fs.copyFile(session.outputPath, saveResult.filePath);
-      // Clean up temp file
       await fs.unlink(session.outputPath).catch(() => {});
 
       ffmpegSessions.delete(sessionId);
@@ -3411,6 +3494,11 @@ export function registerIpcHandlers(
       };
     } catch (error) {
       console.error(`[FFmpeg:${sessionId}] Failed to finish export:`, error);
+      const session = ffmpegSessions.get(sessionId);
+      if (session) {
+        await fs.unlink(session.videoOnlyPath).catch(() => {});
+        await fs.unlink(session.outputPath).catch(() => {});
+      }
       ffmpegSessions.delete(sessionId);
       return { success: false, error: String(error) };
     }
@@ -3444,8 +3532,9 @@ export function registerIpcHandlers(
       session.process.kill("SIGKILL");
       ffmpegSessions.delete(sessionId);
 
-      // Clean up temp file
+      // Clean up temp files (both step 1 video-only and step 2 muxed output)
       fs.unlink(session.outputPath).catch(() => {});
+      fs.unlink(session.videoOnlyPath).catch(() => {});
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };

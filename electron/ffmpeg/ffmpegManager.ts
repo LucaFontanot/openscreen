@@ -152,28 +152,22 @@ export async function getFFmpegCapabilities(): Promise<{
 /**
  * Builds FFmpeg arguments for encoding raw RGBA frames piped to stdin.
  */
-export function buildFFmpegArgs(config: {
+/**
+ * Builds FFmpeg args for step 1: video-only export from pipe:0.
+ * Audio is handled separately in step 2 via buildAudioMuxArgs().
+ * We split video and audio because raw H.264 from pipe:0 has no timestamps,
+ * which causes the MP4 muxer to drop audio when both are processed together.
+ * By exporting video-only first, the resulting MP4 has proper container timestamps
+ * that FFmpeg can then use to correctly interleave audio in step 2.
+ */
+export function buildVideoOnlyArgs(config: {
   width: number;
   height: number;
   frameRate: number;
   encoder: string;
   bitrate: number;
   outputPath: string;
-  audioSourcePath?: string;
-  hasAudio?: boolean;
-  backgroundAudioPath?: string;
-  backgroundAudioVolume?: number;
-  backgroundMusicFadeIn?: number;
-  backgroundMusicFadeOut?: number;
 }): string[] {
-  const hasBackgroundAudio = Boolean(config.backgroundAudioPath);
-  const hasMainAudio = Boolean(config.audioSourcePath && config.hasAudio);
-  const bgVolume = config.backgroundAudioVolume ?? 0.35;
-  const fadeInSec = config.backgroundMusicFadeIn ?? 0;
-  // Note: fadeOut is not applied via FFmpeg because it requires knowing the stream
-  // duration in advance (which we don't have with a pipe). The WebCodecs path handles
-  // fade-out in the renderer.
-
   const args: string[] = [
     "-hide_banner",
     "-loglevel",
@@ -184,19 +178,72 @@ export function buildFFmpegArgs(config: {
     // for codec parameters (SPS/PPS) to arrive from the WebCodecs encoder over IPC.
     // We must override analyzeduration and probesize so FFmpeg waits for the first
     // keyframe before failing with "unspecified size".
+    "-fflags",
+    "+genpts",  // Generate PTS for raw H.264 packets from pipe — without this,
+                // the MP4 muxer drops audio because video timestamps are unset
     "-f",
     "h264",
-    "-r",
-    String(config.frameRate),
+    "-framerate",  // --framerate (not -r) is the correct flag for input formats
+    String(config.frameRate),  // like raw H.264 that have no inherent timestamps
     "-analyzeduration",
     "20000000", // 20 seconds — enough time for WebCodecs to encode and IPC to deliver the first keyframe
     "-probesize",
     "5000000", // 5 MB probe buffer (FFmpeg default for files; pipes default to much less)
     "-i",
     "pipe:0",
+    "-map", "0:v",
+    "-c:v", "copy",
+    "-an",  // No audio in step 1 — will be added in step 2
+    "-movflags", "+faststart",
+    config.outputPath,
   ];
 
-  // Input 1: main audio from source file
+  return args;
+}
+
+/**
+ * Builds FFmpeg args for step 2: mux video (from step 1 temp file) with audio
+ * from the source recording and/or background music.
+ *
+ * In this step both inputs are regular files with proper timestamps, so the
+ * MP4 muxer can correctly interleave video and audio packets.
+ */
+export function buildAudioMuxArgs(config: {
+  videoInputPath: string;
+  audioSourcePath?: string;
+  hasAudio?: boolean;
+  backgroundAudioPath?: string;
+  backgroundAudioVolume?: number;
+  backgroundMusicFadeIn?: number;
+  outputPath: string;
+}): string[] | null {
+  const hasBackgroundAudio = Boolean(config.backgroundAudioPath);
+  const hasMainAudio = Boolean(config.audioSourcePath && config.hasAudio);
+  const bgVolume = config.backgroundAudioVolume ?? 0.35;
+  const fadeInSec = config.backgroundMusicFadeIn ?? 0;
+
+  // No audio at all — nothing to mux
+  if (!hasMainAudio && !hasBackgroundAudio) {
+    return null;
+  }
+
+  console.log(
+    `[FFmpegManager] buildAudioMuxArgs:\n` +
+      `  hasMainAudio: ${hasMainAudio} (sourcePath=${config.audioSourcePath || "(none)"}, hasAudio=${config.hasAudio})\n` +
+      `  hasBackgroundAudio: ${hasBackgroundAudio} (bgPath=${config.backgroundAudioPath || "(none)"})\n` +
+      `  bgVolume: ${bgVolume}, fadeInSec: ${fadeInSec}`,
+  );
+
+  const args: string[] = [
+    "-hide_banner",
+    "-loglevel",
+    "warning",
+    "-y",
+    // Input 0: video from step 1 (proper MP4 with timestamps)
+    "-i", config.videoInputPath,
+  ];
+
+  // Input 1: main audio from source recording
   if (hasMainAudio) {
     args.push("-i", config.audioSourcePath!);
   }
@@ -206,34 +253,38 @@ export function buildFFmpegArgs(config: {
     args.push("-i", config.backgroundAudioPath!);
   }
 
-  // Video: copy the pre-encoded H.264 stream
+  // Video: copy from input 0
   args.push("-map", "0:v", "-c:v", "copy");
 
   // Audio: mix or pass through
   if (hasMainAudio && hasBackgroundAudio) {
-    // Both: mix with amix filter, apply volume/fade to background
-    const bgFilterParts = [`[1:a]volume=${bgVolume}`];
+    // Both: mix with amix filter, apply volume/fade to background music
+    const bgFilterParts = [`[2:a]volume=${bgVolume}`];
     if (fadeInSec > 0) bgFilterParts.push(`afade=t=in:d=${fadeInSec}`);
     const bgFilter = bgFilterParts.join(",");
-    const filterComplex = `${bgFilter}[bg];[bg][2:a]amix=inputs=2:duration=first:dropout_transition=0[audio]`;
+    const filterComplex = `${bgFilter}[bg];[1:a][bg]amix=inputs=2:duration=longest:dropout_transition=0[audio]`;
     args.push("-filter_complex", filterComplex);
     args.push("-map", "[audio]");
   } else if (hasMainAudio) {
     // Only main audio
     args.push("-map", "1:a");
   } else if (hasBackgroundAudio) {
-    // Only background audio (no main video audio)
+    // Only background audio
     const audioFilters = [`volume=${bgVolume}`];
     if (fadeInSec > 0) audioFilters.push(`afade=t=in:d=${fadeInSec}`);
     args.push("-map", "1:a", "-af", audioFilters.join(","));
   }
 
-  if (hasMainAudio || hasBackgroundAudio) {
-    args.push("-c:a", "aac", "-b:a", "192k", "-ac", "2");
+  args.push("-c:a", "aac", "-b:a", "192k", "-ac", "2");
+  args.push("-movflags", "+faststart");
+
+  // -shortest is only needed when background music (which is longer than the video)
+  // is being mixed in. Without it, -shortest can truncate the output if the
+  // step 1 video has slightly different timestamps than the source audio file.
+  if (hasBackgroundAudio) {
+    args.push("-shortest");
   }
 
-  args.push("-movflags", "+faststart");
-  args.push("-shortest");
   args.push(config.outputPath);
 
   return args;

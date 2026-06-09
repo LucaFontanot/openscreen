@@ -118,6 +118,11 @@ export class FFmpegExporter {
       const streamingDecoder = new StreamingVideoDecoder();
       this.streamingDecoder = streamingDecoder;
       const videoInfo = await streamingDecoder.loadMetadata(this.config.videoUrl);
+      console.log(
+        `[FFmpegExporter] Source video metadata: ${videoInfo.width}x${videoInfo.height}, ` +
+          `hasAudio=${videoInfo.hasAudio}, audioCodec=${videoInfo.audioCodec ?? "none"}, ` +
+          `duration=${videoInfo.duration.toFixed(2)}s, codec=${videoInfo.codec}`,
+      );
 
       let webcamDecoder: StreamingVideoDecoder | null = null;
       let webcamInfo: Awaited<ReturnType<StreamingVideoDecoder["loadMetadata"]>> | null = null;
@@ -171,6 +176,16 @@ export class FFmpegExporter {
       }
 
       // 4. Start FFmpeg process
+      const bgAudioPath = this.config.backgroundAudioUrl;
+      console.log(
+        `[FFmpegExporter] Audio config for FFmpeg:\n` +
+          `  audioSourcePath: ${this.config.videoUrl}\n` +
+          `  hasAudio (videoInfo.hasAudio): ${videoInfo.hasAudio}\n` +
+          `  backgroundAudioPath: ${bgAudioPath || "(none)"}\n` +
+          `  backgroundAudioVolume: ${this.config.backgroundAudioVolume ?? 0.35}\n` +
+          `  backgroundMusicFadeIn: ${this.config.backgroundMusicFadeIn ?? 0}`,
+      );
+
       const startResult = await window.electronAPI.ffmpegExportStart({
         width: this.config.width,
         height: this.config.height,
@@ -178,7 +193,7 @@ export class FFmpegExporter {
         encoder,
         bitrate: this.config.bitrate,
         audioSourcePath: this.config.videoUrl,
-        hasAudio: videoInfo.hasAudio || Boolean(this.config.backgroundAudioUrl),
+        hasAudio: videoInfo.hasAudio,
         backgroundAudioPath: this.config.backgroundAudioUrl,
         backgroundAudioVolume: this.config.backgroundAudioVolume ?? 0.35,
         backgroundMusicFadeIn: this.config.backgroundMusicFadeIn ?? 0,
