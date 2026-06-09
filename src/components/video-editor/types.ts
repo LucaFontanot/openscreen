@@ -369,7 +369,7 @@ export const DEFAULT_BLUR_FREEHAND_POINTS: Array<{ x: number; y: number }> = [
   { x: 8, y: 58 },
 ];
 
-export type StickerCategory = "round" | "square";
+export type StickerCategory = "round" | "square" | "arrow";
 
 export interface StickerData {
   stickerId: string;

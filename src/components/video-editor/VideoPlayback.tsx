@@ -313,6 +313,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
     const [overlaySize, setOverlaySize] = useState({ width: 800, height: 600 });
     const [overlayElement, setOverlayElement] = useState<HTMLDivElement | null>(null);
     const overlayRef = useRef<HTMLDivElement | null>(null);
+    // Refs to wrapper divs for linked-to-video sticker overlays. The ticker
+    // updates their CSS transform imperatively so stickers follow the camera zoom
+    // without triggering React re-renders every animation frame.
+    const linkedStickerWrapperRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
     const focusIndicatorRef = useRef<HTMLDivElement | null>(null);
     const composite3DRef = useRef<HTMLDivElement | null>(null);
@@ -1612,6 +1616,17 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
           motionVector,
         );
 
+        // Imperatively update linked-sticker overlay wrappers so they follow
+        // the camera zoom without triggering React re-renders every frame.
+        const isIdentity = appliedScale === 1 && appliedX === 0 && appliedY === 0;
+        for (const [, el] of linkedStickerWrapperRefs.current) {
+          if (el) {
+            el.style.transform = isIdentity
+              ? ""
+              : `matrix(${appliedScale},0,0,${appliedScale},${appliedX},${appliedY})`;
+          }
+        }
+
         const isMotionBlurActive =
           (motionBlurAmountRef.current || 0) > 0 && isPlayingRef.current && !isScrubbingRef.current;
 
@@ -2188,61 +2203,95 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
                   }
                 };
 
-                return sorted.map((item) => (
-                  <AnnotationOverlay
-                    key={
-                      item.kind === "blur"
-                        ? `${item.region.id}-${overlaySize.width}-${overlaySize.height}-${item.region.blurData?.type ?? "blur"}-${item.region.blurData?.shape ?? "rectangle"}-${item.region.blurData?.color ?? "white"}-${Math.round(item.region.blurData?.blockSize ?? 0)}-${Math.round(item.region.blurData?.intensity ?? 0)}-${(item.region.blurData?.freehandPoints ?? []).map((p) => `${Math.round(p.x)}_${Math.round(p.y)}`).join("-")}`
-                        : item.kind === "sticker"
-                          ? `${item.region.id}-${overlaySize.width}-${overlaySize.height}-sticker`
-                          : `${item.region.id}-${overlaySize.width}-${overlaySize.height}`
-                    }
-                    annotation={item.region}
-                    isSelected={
-                      item.kind === "blur"
-                        ? item.region.id === selectedBlurId
-                        : item.kind === "sticker"
-                          ? item.region.id === selectedStickerId
-                          : item.region.id === selectedAnnotationId
-                    }
-                    containerWidth={overlaySize.width}
-                    containerHeight={overlaySize.height}
-                    onPositionChange={(id, position) =>
-                      item.kind === "blur"
-                        ? onBlurPositionChange?.(id, position)
-                        : onAnnotationPositionChange?.(id, position)
-                    }
-                    onSizeChange={(id, size) =>
-                      item.kind === "blur"
-                        ? onBlurSizeChange?.(id, size)
-                        : onAnnotationSizeChange?.(id, size)
-                    }
-                    onBlurDataChange={
-                      item.kind === "blur"
-                        ? (id, blurData) => onBlurDataChange?.(id, blurData)
-                        : undefined
-                    }
-                    onBlurDataCommit={item.kind === "blur" ? onBlurDataCommit : undefined}
-                    onClick={
-                      item.kind === "blur"
-                        ? handleBlurClick
-                        : item.kind === "sticker"
-                          ? handleStickerClick
-                          : handleAnnotationClick
-                    }
-                    zIndex={item.region.zIndex}
-                    isSelectedBoost={
-                      item.kind === "blur"
-                        ? item.region.id === selectedBlurId
-                        : item.kind === "sticker"
-                          ? item.region.id === selectedStickerId
-                          : item.region.id === selectedAnnotationId
-                    }
-                    previewSourceCanvas={previewSnapshotCanvas}
-                    previewFrameVersion={Math.round(currentTime * 1000)}
-                    currentTimeMs={Math.round(currentTime * 1000)}
-                  />
-                ));
+                return sorted.map((item) => {
+                  const isLinkedSticker =
+                    item.kind === "sticker" &&
+                    item.region.stickerData?.linkedToVideo !== false;
+
+                  const overlayKey =
+                    item.kind === "blur"
+                      ? `${item.region.id}-${overlaySize.width}-${overlaySize.height}-${item.region.blurData?.type ?? "blur"}-${item.region.blurData?.shape ?? "rectangle"}-${item.region.blurData?.color ?? "white"}-${Math.round(item.region.blurData?.blockSize ?? 0)}-${Math.round(item.region.blurData?.intensity ?? 0)}-${(item.region.blurData?.freehandPoints ?? []).map((p) => `${Math.round(p.x)}_${Math.round(p.y)}`).join("-")}`
+                      : item.kind === "sticker"
+                        ? `${item.region.id}-${overlaySize.width}-${overlaySize.height}-sticker`
+                        : `${item.region.id}-${overlaySize.width}-${overlaySize.height}`;
+
+                  const overlayEl = (
+                    <AnnotationOverlay
+                      key={overlayKey}
+                      annotation={item.region}
+                      isSelected={
+                        item.kind === "blur"
+                          ? item.region.id === selectedBlurId
+                          : item.kind === "sticker"
+                            ? item.region.id === selectedStickerId
+                            : item.region.id === selectedAnnotationId
+                      }
+                      containerWidth={overlaySize.width}
+                      containerHeight={overlaySize.height}
+                      onPositionChange={(id, position) =>
+                        item.kind === "blur"
+                          ? onBlurPositionChange?.(id, position)
+                          : onAnnotationPositionChange?.(id, position)
+                      }
+                      onSizeChange={(id, size) =>
+                        item.kind === "blur"
+                          ? onBlurSizeChange?.(id, size)
+                          : onAnnotationSizeChange?.(id, size)
+                      }
+                      onBlurDataChange={
+                        item.kind === "blur"
+                          ? (id, blurData) => onBlurDataChange?.(id, blurData)
+                          : undefined
+                      }
+                      onBlurDataCommit={item.kind === "blur" ? onBlurDataCommit : undefined}
+                      onClick={
+                        item.kind === "blur"
+                          ? handleBlurClick
+                          : item.kind === "sticker"
+                            ? handleStickerClick
+                            : handleAnnotationClick
+                      }
+                      zIndex={item.region.zIndex}
+                      isSelectedBoost={
+                        item.kind === "blur"
+                          ? item.region.id === selectedBlurId
+                          : item.kind === "sticker"
+                            ? item.region.id === selectedStickerId
+                            : item.region.id === selectedAnnotationId
+                      }
+                      previewSourceCanvas={previewSnapshotCanvas}
+                      previewFrameVersion={Math.round(currentTime * 1000)}
+                      currentTimeMs={Math.round(currentTime * 1000)}
+                    />
+                  );
+
+                  if (isLinkedSticker) {
+                    // Wrap linked stickers in a div whose CSS transform is updated
+                    // imperatively by the animation ticker to follow the camera zoom.
+                    return (
+                      <div
+                        key={`linked-wrapper-${item.region.id}`}
+                        ref={(el) => {
+                          if (el) {
+                            linkedStickerWrapperRefs.current.set(item.region.id, el);
+                          } else {
+                            linkedStickerWrapperRefs.current.delete(item.region.id);
+                          }
+                        }}
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          pointerEvents: "none",
+                          transformOrigin: "0 0",
+                        }}
+                      >
+                        {overlayEl}
+                      </div>
+                    );
+                  }
+
+                  return overlayEl;
+                });
               })()}
             </div>
           )}

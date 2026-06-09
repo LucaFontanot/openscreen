@@ -183,7 +183,8 @@
     "title": "Sticker",
     "category": "Overlay",
     "categoryRound": "Round",
-    "categorySquare": "Square"
+    "categorySquare": "Square",
+    "categoryArrow": "Arrows"
   },
   "textAnimation": {
     "title": "Text Animation",

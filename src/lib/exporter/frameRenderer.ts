@@ -474,14 +474,14 @@ export class FrameRenderer {
       let adjustedRegions = annotationRegions;
       if (layoutCache) {
         const hasLinkedStickers = annotationRegions.some(
-          (r) => r.type === "sticker" && r.stickerData?.linkedToVideo,
+          (r) => r.type === "sticker" && r.stickerData?.linkedToVideo !== false,
         );
         if (hasLinkedStickers) {
           const aState = this.animationState;
           const mask = layoutCache.maskRect;
           const { width: canvasW, height: canvasH } = this.config;
           adjustedRegions = annotationRegions.map((region) => {
-            if (region.type !== "sticker" || !region.stickerData?.linkedToVideo) {
+            if (region.type !== "sticker" || region.stickerData?.linkedToVideo === false) {
               return region;
             }
             // Original screen position in pixels

@@ -232,6 +232,12 @@ export class FFmpegExporter {
       let frameErrors = 0;
       const MAX_FRAME_ERRORS = 3;
 
+      // Collect all in-flight IPC promises so we can drain them after vidEncoder.flush().
+      // Without this, flush() may resolve while IPC calls are still in transit, and
+      // ffmpegExportFinish() would close stdin before all frame data arrives — causing the
+      // exported video to be cut short / freeze at the end.
+      const pendingIpcPromises: Array<Promise<void>> = [];
+
       // Pre-check: ask the browser whether it can handle hardware-accelerated encoding
       // for this exact config.  If it says "no" we skip straight to software and avoid
       // the async-error race entirely.
@@ -266,21 +272,34 @@ export class FFmpegExporter {
               const buffer = new ArrayBuffer(chunk.byteLength);
               chunk.copyTo(buffer);
 
-              const frameResult = await window.electronAPI.ffmpegExportFrame(this.sessionId!, buffer);
+              // Wrap the IPC call in a tracked promise so we can drain all in-flight
+              // calls after flush() completes before signalling FFmpeg that the stream
+              // is finished.
+              let resolveIpc!: () => void;
+              const ipcDone = new Promise<void>((r) => {
+                resolveIpc = r;
+              });
+              pendingIpcPromises.push(ipcDone);
 
-              if (!frameResult.success) {
-                frameErrors++;
-                const errMsg =
-                  `FFmpeg frame send ${frameErrors}/${MAX_FRAME_ERRORS} ` +
-                  `(session: ${this.sessionId}, error: ${frameResult.error})`;
-                console.error(`[FFmpegExporter] ${errMsg}`);
-                if (frameErrors >= MAX_FRAME_ERRORS) {
-                  encoderError = new Error(
-                    `FFmpeg IPC failed after ${MAX_FRAME_ERRORS} errors: ${frameResult.error}`,
-                  );
+              try {
+                const frameResult = await window.electronAPI.ffmpegExportFrame(this.sessionId!, buffer);
+
+                if (!frameResult.success) {
+                  frameErrors++;
+                  const errMsg =
+                    `FFmpeg frame send ${frameErrors}/${MAX_FRAME_ERRORS} ` +
+                    `(session: ${this.sessionId}, error: ${frameResult.error})`;
+                  console.error(`[FFmpegExporter] ${errMsg}`);
+                  if (frameErrors >= MAX_FRAME_ERRORS) {
+                    encoderError = new Error(
+                      `FFmpeg IPC failed after ${MAX_FRAME_ERRORS} errors: ${frameResult.error}`,
+                    );
+                  }
+                } else {
+                  frameErrors = 0; // reset on successful transmission
                 }
-              } else {
-                frameErrors = 0; // reset on successful transmission
+              } finally {
+                resolveIpc();
               }
             },
             error: (e) => {
@@ -457,6 +476,15 @@ export class FFmpegExporter {
       // Flush remains of encoder
       await vidEncoder.flush();
       vidEncoder.close();
+
+      // Drain all in-flight IPC calls before closing the FFmpeg session.
+      // vidEncoder.flush() resolves once all chunks have been handed to the output
+      // callback, but async callbacks may still be awaiting their IPC round-trips.
+      // Without this await, ffmpegExportFinish() can close FFmpeg's stdin while
+      // frames are still in transit, resulting in a video that is cut short.
+      if (pendingIpcPromises.length > 0) {
+        await Promise.allSettled(pendingIpcPromises);
+      }
 
       if (this.cancelled) {
         await this.cancelFFmpeg();

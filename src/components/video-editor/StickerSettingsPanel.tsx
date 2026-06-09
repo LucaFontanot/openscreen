@@ -61,6 +61,7 @@ export function StickerSettingsPanel({
 
   const roundStickers = getStickersByCategory("round");
   const squareStickers = getStickersByCategory("square");
+  const arrowStickers = getStickersByCategory("arrow");
 
   const handleSelectSticker = (sticker: StickerDef) => {
     onStickerDataChange({
@@ -109,7 +110,7 @@ export function StickerSettingsPanel({
           }}
           className="mb-4"
         >
-          <TabsList className="mb-4 bg-white/[0.035] border border-white/[0.06] p-0.5 w-full grid grid-cols-2 h-9 rounded-xl">
+          <TabsList className="mb-4 bg-white/[0.035] border border-white/[0.06] p-0.5 w-full grid grid-cols-3 h-9 rounded-xl">
             <TabsTrigger
               value="round"
               className="data-[state=active]:bg-[#f472b6] data-[state=active]:text-white text-slate-400 rounded-lg transition-all gap-1.5 text-[11px]"
@@ -121,6 +122,12 @@ export function StickerSettingsPanel({
               className="data-[state=active]:bg-[#f472b6] data-[state=active]:text-white text-slate-400 rounded-lg transition-all gap-1.5 text-[11px]"
             >
               {t("sticker.categorySquare")}
+            </TabsTrigger>
+            <TabsTrigger
+              value="arrow"
+              className="data-[state=active]:bg-[#f472b6] data-[state=active]:text-white text-slate-400 rounded-lg transition-all gap-1.5 text-[11px]"
+            >
+              {t("sticker.categoryArrow")}
             </TabsTrigger>
           </TabsList>
 
@@ -140,6 +147,19 @@ export function StickerSettingsPanel({
           <TabsContent value="square" className="mt-0">
             <div className="grid grid-cols-3 gap-2">
               {squareStickers.map((sticker) => (
+                <StickerThumbnail
+                  key={sticker.id}
+                  sticker={sticker}
+                  isSelected={currentStickerId === sticker.id}
+                  onClick={() => handleSelectSticker(sticker)}
+                />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="arrow" className="mt-0">
+            <div className="grid grid-cols-3 gap-2">
+              {arrowStickers.map((sticker) => (
                 <StickerThumbnail
                   key={sticker.id}
                   sticker={sticker}
