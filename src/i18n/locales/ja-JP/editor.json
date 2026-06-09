@@ -44,6 +44,13 @@
     "cameraNotFound": "カメラが見つかりません。",
     "accessibilityAllowAndRetry": "OpenScreenにアクセシビリティアクセスを許可してから、もう一度録画を押してカウントダウンを開始してください。"
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "自動キャプション",
     "dialogTitle": "自動キャプション",

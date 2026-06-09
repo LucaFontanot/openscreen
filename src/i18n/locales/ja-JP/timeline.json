@@ -4,14 +4,16 @@
     "suggestZooms": "カーソル位置からズームを提案",
     "addTrim": "トリムを追加 (T)",
     "addAnnotation": "注釈を追加 (A)",
-    "addBlur": "ぼかしを追加 (B)",
+    "addBlur": "ja-JP addBlur",
+    "addSticker": "ja-JP addSticker",
     "addSpeed": "再生速度を追加 (S)"
   },
   "hints": {
     "pressZoom": "Zキーを押してズームを追加",
     "pressTrim": "Tキーを押してトリムを追加",
     "pressAnnotation": "Aキーを押して注釈を追加",
-    "pressBlur": "Bキーを押してぼかしを追加",
+    "pressBlur": "ja-JP pressBlur",
+    "pressSticker": "ja-JP pressSticker",
     "pressSpeed": "Sキーを押して再生速度を追加"
   },
   "labels": {
@@ -23,7 +25,8 @@
     "trimItem": "トリム {{index}}",
     "speedItem": "再生速度 {{index}}",
     "annotationItem": "注釈",
-    "blurItem": "ぼかし {{index}}",
+    "blurItem": "ja-JP blurItem",
+    "stickerItem": "ja-JP stickerItem",
     "imageItem": "画像",
     "emptyText": "空のテキスト"
   },

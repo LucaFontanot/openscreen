@@ -44,6 +44,13 @@
     "cameraNotFound": "카메라를 찾을 수 없습니다.",
     "accessibilityAllowAndRetry": "OpenScreen의 손쉬운 사용 접근을 허용한 다음, 카운트다운을 시작하려면 다시 녹화를 누르세요."
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "자동 자막",
     "dialogTitle": "자동 자막",

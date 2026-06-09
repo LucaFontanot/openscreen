@@ -9,6 +9,7 @@
     "addTrim": "Add Trim (T)",
     "addAnnotation": "Add Annotation (A)",
     "addBlur": "Add Blur (B)",
+    "addSticker": "Add Sticker (K)",
     "addSpeed": "Add Speed (S)"
   },
   "hints": {
@@ -16,6 +17,7 @@
     "pressTrim": "Press T to add trim",
     "pressAnnotation": "Press A to add annotation",
     "pressBlur": "Press B to add blur region",
+    "pressSticker": "Press K to add sticker",
     "pressSpeed": "Press S to add speed"
   },
   "labels": {
@@ -28,6 +30,7 @@
     "speedItem": "Speed {{index}}",
     "annotationItem": "Annotation",
     "blurItem": "Blur {{index}}",
+    "stickerItem": "Sticker {{index}}",
     "imageItem": "Image",
     "emptyText": "Empty text"
   },

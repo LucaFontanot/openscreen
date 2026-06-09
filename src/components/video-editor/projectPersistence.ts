@@ -33,6 +33,7 @@ import {
   DEFAULT_BLUR_FREEHAND_POINTS,
   DEFAULT_BLUR_INTENSITY,
   DEFAULT_FIGURE_DATA,
+  DEFAULT_STICKER_DATA,
   DEFAULT_PLAYBACK_SPEED,
   DEFAULT_WEBCAM_MIRRORED,
   DEFAULT_WEBCAM_REACTIVE_ZOOM,
@@ -353,7 +354,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
             startMs,
             endMs,
             type:
-              region.type === "image" || region.type === "figure" || region.type === "blur"
+              region.type === "image" || region.type === "figure" || region.type === "blur" || region.type === "sticker"
                 ? region.type
                 : "text",
             content: typeof region.content === "string" ? region.content : "",
@@ -441,6 +442,22 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
                       : DEFAULT_BLUR_FREEHAND_POINTS,
                   }
                 : undefined,
+            stickerData:
+              region.stickerData && typeof region.stickerData === "object"
+                ? {
+                    stickerId:
+                      typeof region.stickerData.stickerId === "string"
+                        ? region.stickerData.stickerId
+                        : DEFAULT_STICKER_DATA.stickerId,
+                    category:
+                      region.stickerData.category === "round" ||
+                      region.stickerData.category === "square"
+                        ? region.stickerData.category
+                        : DEFAULT_STICKER_DATA.category,
+                  }
+                : region.type === "sticker"
+                  ? { ...DEFAULT_STICKER_DATA }
+                  : undefined,
           };
         })
     : [];

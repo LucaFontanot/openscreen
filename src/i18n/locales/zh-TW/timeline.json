@@ -5,14 +5,16 @@
     "addTrim": "新增剪輯 (T)",
     "addAnnotation": "新增標註 (A)",
     "addSpeed": "新增速度 (S)",
-    "addBlur": "新增模糊 (B)"
+    "addBlur": "zh-TW addBlur",
+    "addSticker": "zh-TW addSticker"
   },
   "hints": {
     "pressZoom": "按 Z 新增縮放",
     "pressTrim": "按 T 新增剪輯",
     "pressAnnotation": "按 A 新增標註",
     "pressSpeed": "按 S 新增速度",
-    "pressBlur": "按 B 新增模糊區域"
+    "pressBlur": "zh-TW pressBlur",
+    "pressSticker": "zh-TW pressSticker"
   },
   "labels": {
     "pan": "平移",
@@ -25,7 +27,8 @@
     "annotationItem": "標註",
     "imageItem": "圖片",
     "emptyText": "空文字",
-    "blurItem": "模糊 {{index}}"
+    "blurItem": "zh-TW blurItem",
+    "stickerItem": "zh-TW stickerItem"
   },
   "emptyState": {
     "noVideo": "未載入影片",

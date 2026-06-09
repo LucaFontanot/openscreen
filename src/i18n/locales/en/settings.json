@@ -179,6 +179,12 @@
     "modern": "Modern",
     "clean": "Clean"
   },
+  "sticker": {
+    "title": "Sticker",
+    "category": "Overlay",
+    "categoryRound": "Round",
+    "categorySquare": "Square"
+  },
   "textAnimation": {
     "title": "Text Animation",
     "selectAnimation": "Select animation",

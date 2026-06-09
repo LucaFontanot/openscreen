@@ -44,6 +44,13 @@
     "permissionDenied": "录屏权限被拒绝。请允许屏幕录制。",
     "accessibilityAllowAndRetry": "允许 OpenScreen 使用辅助功能权限，然后再次按录制以开始倒计时。"
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "自动字幕",
     "dialogTitle": "自动字幕",

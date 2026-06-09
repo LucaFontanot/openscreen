@@ -132,6 +132,9 @@ interface VideoPlaybackProps {
   blurRegions?: AnnotationRegion[];
   selectedBlurId?: string | null;
   onSelectBlur?: (id: string | null) => void;
+  stickerRegions?: AnnotationRegion[];
+  selectedStickerId?: string | null;
+  onSelectSticker?: (id: string | null) => void;
   onBlurPositionChange?: (id: string, position: { x: number; y: number }) => void;
   onBlurSizeChange?: (id: string, size: { width: number; height: number }) => void;
   onBlurDataChange?: (id: string, blurData: BlurData) => void;
@@ -265,6 +268,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
       blurRegions = [],
       selectedBlurId,
       onSelectBlur,
+      stickerRegions = [],
+      selectedStickerId,
+      onSelectSticker,
       onBlurPositionChange,
       onBlurSizeChange,
       onBlurDataChange,
@@ -2105,6 +2111,19 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
                   return timeMs >= blurRegion.startMs && timeMs < blurRegion.endMs;
                 });
 
+                const filteredStickerRegions = (stickerRegions || []).filter((stickerRegion) => {
+                  if (
+                    typeof stickerRegion.startMs !== "number" ||
+                    typeof stickerRegion.endMs !== "number"
+                  )
+                    return false;
+
+                  if (stickerRegion.id === selectedStickerId) return true;
+
+                  const timeMs = Math.round(currentTime * 1000);
+                  return timeMs >= stickerRegion.startMs && timeMs < stickerRegion.endMs;
+                });
+
                 const sorted = [
                   ...filteredAnnotations.map((annotation) => ({
                     kind: "annotation" as const,
@@ -2113,6 +2132,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
                   ...filteredBlurRegions.map((blurRegion) => ({
                     kind: "blur" as const,
                     region: blurRegion,
+                  })),
+                  ...filteredStickerRegions.map((stickerRegion) => ({
+                    kind: "sticker" as const,
+                    region: stickerRegion,
                   })),
                 ].sort((a, b) => a.region.zIndex - b.region.zIndex);
                 const previewSnapshotCanvas =
@@ -2153,18 +2176,34 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
                   }
                 };
 
+                const handleStickerClick = (clickedId: string) => {
+                  if (!onSelectSticker) return;
+
+                  if (clickedId === selectedStickerId && filteredStickerRegions.length > 1) {
+                    const currentIndex = filteredStickerRegions.findIndex((a) => a.id === clickedId);
+                    const nextIndex = (currentIndex + 1) % filteredStickerRegions.length;
+                    onSelectSticker(filteredStickerRegions[nextIndex].id);
+                  } else {
+                    onSelectSticker(clickedId);
+                  }
+                };
+
                 return sorted.map((item) => (
                   <AnnotationOverlay
                     key={
                       item.kind === "blur"
                         ? `${item.region.id}-${overlaySize.width}-${overlaySize.height}-${item.region.blurData?.type ?? "blur"}-${item.region.blurData?.shape ?? "rectangle"}-${item.region.blurData?.color ?? "white"}-${Math.round(item.region.blurData?.blockSize ?? 0)}-${Math.round(item.region.blurData?.intensity ?? 0)}-${(item.region.blurData?.freehandPoints ?? []).map((p) => `${Math.round(p.x)}_${Math.round(p.y)}`).join("-")}`
-                        : `${item.region.id}-${overlaySize.width}-${overlaySize.height}`
+                        : item.kind === "sticker"
+                          ? `${item.region.id}-${overlaySize.width}-${overlaySize.height}-sticker`
+                          : `${item.region.id}-${overlaySize.width}-${overlaySize.height}`
                     }
                     annotation={item.region}
                     isSelected={
                       item.kind === "blur"
                         ? item.region.id === selectedBlurId
-                        : item.region.id === selectedAnnotationId
+                        : item.kind === "sticker"
+                          ? item.region.id === selectedStickerId
+                          : item.region.id === selectedAnnotationId
                     }
                     containerWidth={overlaySize.width}
                     containerHeight={overlaySize.height}
@@ -2184,12 +2223,20 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
                         : undefined
                     }
                     onBlurDataCommit={item.kind === "blur" ? onBlurDataCommit : undefined}
-                    onClick={item.kind === "blur" ? handleBlurClick : handleAnnotationClick}
+                    onClick={
+                      item.kind === "blur"
+                        ? handleBlurClick
+                        : item.kind === "sticker"
+                          ? handleStickerClick
+                          : handleAnnotationClick
+                    }
                     zIndex={item.region.zIndex}
                     isSelectedBoost={
                       item.kind === "blur"
                         ? item.region.id === selectedBlurId
-                        : item.region.id === selectedAnnotationId
+                        : item.kind === "sticker"
+                          ? item.region.id === selectedStickerId
+                          : item.region.id === selectedAnnotationId
                     }
                     previewSourceCanvas={previewSnapshotCanvas}
                     previewFrameVersion={Math.round(currentTime * 1000)}

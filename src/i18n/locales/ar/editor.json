@@ -44,6 +44,13 @@
     "permissionDenied": "تم رفض إذن التسجيل. يرجى السماح بتسجيل الشاشة.",
     "accessibilityAllowAndRetry": "اسمح بوصول تسهيلات الاستخدام لـ OpenScreen، ثم اضغط على التسجيل مرة أخرى لبدء العد التنازلي."
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "التسميات التوضيحية التلقائية",
     "dialogTitle": "التسميات التوضيحية التلقائية",

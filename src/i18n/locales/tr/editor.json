@@ -44,6 +44,13 @@
     "cancel": "İptal",
     "confirm": "Onayla"
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "Otomatik altyazılar",
     "dialogTitle": "Otomatik altyazılar",

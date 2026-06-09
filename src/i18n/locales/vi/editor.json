@@ -44,6 +44,13 @@
     "permissionDenied": "Quyền ghi hình bị từ chối. Vui lòng cho phép ghi màn hình.",
     "accessibilityAllowAndRetry": "Cho phép OpenScreen truy cập Trợ năng, sau đó nhấn ghi lại để bắt đầu đếm ngược."
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "Phụ đề tự động",
     "dialogTitle": "Phụ đề tự động",

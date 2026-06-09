@@ -7,6 +7,10 @@ import {
   getNormalizedMosaicBlockSize,
 } from "@/lib/blurEffects";
 import { cn } from "@/lib/utils";
+import {
+  getStickerById,
+  getStickerDataUrl,
+} from "@/lib/stickers/stickerLibrary";
 import { getArrowComponent } from "./ArrowSvgs";
 import {
   type AnnotationRegion,
@@ -505,6 +509,21 @@ export function AnnotationOverlay({
               />
             )}
           </div>
+        );
+      }
+
+      case "sticker": {
+        if (!annotation.stickerData) return null;
+        const sticker = getStickerById(annotation.stickerData.stickerId);
+        if (!sticker) return null;
+        const stickerUrl = getStickerDataUrl(sticker);
+        return (
+          <img
+            src={stickerUrl}
+            alt={sticker.name}
+            className="w-full h-full object-contain pointer-events-none select-none"
+            draggable={false}
+          />
         );
       }
 

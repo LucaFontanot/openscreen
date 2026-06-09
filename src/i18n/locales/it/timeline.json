@@ -4,14 +4,16 @@
     "suggestZooms": "Suggerisci zoom dal cursore",
     "addTrim": "Aggiungi taglio (T)",
     "addAnnotation": "Aggiungi annotazione (A)",
-    "addBlur": "Aggiungi sfocatura (B)",
+    "addBlur": "it addBlur",
+    "addSticker": "it addSticker",
     "addSpeed": "Aggiungi velocità (S)"
   },
   "hints": {
     "pressZoom": "Premi Z per aggiungere zoom",
     "pressTrim": "Premi T per aggiungere taglio",
     "pressAnnotation": "Premi A per aggiungere annotazione",
-    "pressBlur": "Premi B per aggiungere regione sfocatura",
+    "pressBlur": "it pressBlur",
+    "pressSticker": "it pressSticker",
     "pressSpeed": "Premi S per aggiungere velocità"
   },
   "labels": {
@@ -23,7 +25,8 @@
     "trimItem": "Taglio {{index}}",
     "speedItem": "Velocità {{index}}",
     "annotationItem": "Annotazione",
-    "blurItem": "Sfocatura {{index}}",
+    "blurItem": "it blurItem",
+    "stickerItem": "it stickerItem",
     "imageItem": "Immagine",
     "emptyText": "Testo vuoto"
   },

@@ -44,6 +44,13 @@
     "cameraNotFound": "找不到攝影機。",
     "accessibilityAllowAndRetry": "允許 OpenScreen 使用輔助使用權限，然後再次按下錄製以開始倒數。"
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "自動字幕",
     "dialogTitle": "自動字幕",

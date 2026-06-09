@@ -4,14 +4,16 @@
     "suggestZooms": "Sugerir Zooms a partir do Cursor",
     "addTrim": "Adicionar Recorte (T)",
     "addAnnotation": "Adicionar Anotação (A)",
-    "addBlur": "Adicionar Desfoque (B)",
+    "addBlur": "pt-BR addBlur",
+    "addSticker": "pt-BR addSticker",
     "addSpeed": "Adicionar Velocidade (S)"
   },
   "hints": {
     "pressZoom": "Pressione Z para adicionar zoom",
     "pressTrim": "Pressione T para adicionar recorte",
     "pressAnnotation": "Pressione A para adicionar anotação",
-    "pressBlur": "Pressione B para adicionar região de desfoque",
+    "pressBlur": "pt-BR pressBlur",
+    "pressSticker": "pt-BR pressSticker",
     "pressSpeed": "Pressione S para adicionar velocidade"
   },
   "labels": {
@@ -23,7 +25,8 @@
     "trimItem": "Recorte {{index}}",
     "speedItem": "Velocidade {{index}}",
     "annotationItem": "Anotação",
-    "blurItem": "Desfoque {{index}}",
+    "blurItem": "pt-BR blurItem",
+    "stickerItem": "pt-BR stickerItem",
     "imageItem": "Imagem",
     "emptyText": "Texto vazio"
   },

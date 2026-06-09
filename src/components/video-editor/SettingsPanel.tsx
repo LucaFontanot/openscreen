@@ -59,6 +59,7 @@ import { getTestId } from "@/utils/getTestId";
 import ColorPicker from "../ui/color-picker";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
 import { BlurSettingsPanel } from "./BlurSettingsPanel";
+import { StickerSettingsPanel } from "./StickerSettingsPanel";
 import { BACKGROUND_IMAGE_ACCEPT, isSupportedBackgroundImageType } from "./backgroundImageUpload";
 import { CropControl } from "./CropControl";
 import { parseCustomPlaybackSpeedInput } from "./customPlaybackSpeed";
@@ -70,7 +71,7 @@ import {
   DEFAULT_SOURCE_DIMENSIONS,
   DEFAULT_WEBCAM_SETTINGS,
 } from "./editorDefaults";
-import { BLUR_REGIONS_ENABLED } from "./featureFlags";
+import { BLUR_REGIONS_ENABLED, STICKER_REGIONS_ENABLED } from "./featureFlags";
 import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
 import type {
   AnnotationRegion,
@@ -82,6 +83,7 @@ import type {
   FigureData,
   PlaybackSpeed,
   Rotation3DPreset,
+  StickerData,
   TrimRegion,
   WebcamLayoutPreset,
   WebcamMaskShape,
@@ -321,6 +323,10 @@ interface SettingsPanelProps {
   onBlurDataChange?: (id: string, blurData: BlurData) => void;
   onBlurDataCommit?: () => void;
   onBlurDelete?: (id: string) => void;
+  selectedStickerId?: string | null;
+  stickerRegions?: AnnotationRegion[];
+  onStickerDataChange?: (id: string, stickerData: StickerData) => void;
+  onStickerDelete?: (id: string) => void;
   selectedSpeedId?: string | null;
   selectedSpeedValue?: PlaybackSpeed | null;
   onSpeedChange?: (speed: PlaybackSpeed) => void;
@@ -490,6 +496,10 @@ export function SettingsPanel({
   onBlurDataChange,
   onBlurDataCommit,
   onBlurDelete,
+  selectedStickerId,
+  stickerRegions = [],
+  onStickerDataChange,
+  onStickerDelete,
   selectedSpeedId,
   selectedSpeedValue,
   onSpeedChange,
@@ -809,6 +819,9 @@ export function SettingsPanel({
   const selectedBlur = selectedBlurId
     ? blurRegions.find((region) => region.id === selectedBlurId)
     : null;
+  const selectedSticker = selectedStickerId
+    ? stickerRegions.find((region) => region.id === selectedStickerId)
+    : null;
   const commonFooterLinks = (
     <div className="flex gap-2 mt-3">
       <button
@@ -889,6 +902,25 @@ export function SettingsPanel({
             onBlurDataChange={(blurData) => onBlurDataChange(selectedBlur.id, blurData)}
             onBlurDataCommit={onBlurDataCommit}
             onDelete={() => onBlurDelete(selectedBlur.id)}
+          />
+        </div>
+        <div className="flex-shrink-0 p-3 border-t border-white/[0.07] bg-black/25">
+          {commonFooterLinks}
+        </div>
+      </div>
+    );
+  }
+
+  if (STICKER_REGIONS_ENABLED && selectedSticker && onStickerDataChange && onStickerDelete) {
+    return (
+      <div className="editor-inspector-shell flex min-w-0 flex-col h-full overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <StickerSettingsPanel
+            stickerRegion={selectedSticker}
+            onStickerDataChange={(stickerData) =>
+              onStickerDataChange(selectedSticker.id, stickerData)
+            }
+            onDelete={() => onStickerDelete(selectedSticker.id)}
           />
         </div>
         <div className="flex-shrink-0 p-3 border-t border-white/[0.07] bg-black/25">

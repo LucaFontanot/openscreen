@@ -43,6 +43,13 @@
     "permissionDenied": "Autorizzazione di registrazione negata. Consenti la registrazione dello schermo.",
     "accessibilityAllowAndRetry": "Consenti l'accesso all'accessibilità per OpenScreen, poi premi di nuovo registra per avviare il conto alla rovescia."
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "Sottotitoli automatici",
     "dialogTitle": "Sottotitoli automatici",

@@ -44,6 +44,13 @@
   },
   "loadingVideo": "Chargement de la vidéo...",
   "loadingEditor": "Chargement de l'éditeur...",
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "Sous-titres automatiques",
     "dialogTitle": "Sous-titres automatiques",

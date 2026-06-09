@@ -110,6 +110,34 @@
   z-index: 10;
 }
 
+.glassPink {
+  position: relative;
+  border-radius: 10px;
+  -corner-smoothing: antialiased;
+  background: rgba(244, 114, 182, 0.15);
+  border: 1px solid rgba(244, 114, 182, 0.3);
+  box-shadow: 0 2px 12px 0 rgba(244, 114, 182, 0.1) inset;
+  margin: 3px 0;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glassPink:hover {
+  background: rgba(244, 114, 182, 0.25);
+  border-color: rgba(244, 114, 182, 0.5);
+  box-shadow: 0 4px 20px 0 rgba(244, 114, 182, 0.2) inset;
+}
+
+.glassPink.selected {
+  background: rgba(244, 114, 182, 0.35);
+  border-color: #f472b6;
+  box-shadow:
+    0 0 0 1px #f472b6,
+    0 4px 20px 0 rgba(244, 114, 182, 0.3) inset;
+  z-index: 10;
+}
+
 .zoomEndCap {
   position: absolute;
   top: 0;
@@ -130,7 +158,9 @@
 .glassYellow:hover .zoomEndCap,
 .glassYellow.selected .zoomEndCap,
 .glassAmber:hover .zoomEndCap,
-.glassAmber.selected .zoomEndCap {
+.glassAmber.selected .zoomEndCap,
+.glassPink:hover .zoomEndCap,
+.glassPink.selected .zoomEndCap {
   opacity: 1;
 }
 

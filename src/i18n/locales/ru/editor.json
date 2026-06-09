@@ -44,6 +44,13 @@
     "permissionDenied": "Разрешение на запись запрещено. Пожалуйста, разрешите запись экрана.",
     "accessibilityAllowAndRetry": "Разрешите OpenScreen доступ к Универсальному доступу, затем снова нажмите запись, чтобы начать обратный отсчет."
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "Автосубтитры",
     "dialogTitle": "Автосубтитры",

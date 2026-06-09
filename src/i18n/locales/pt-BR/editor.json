@@ -42,6 +42,13 @@
     "cameraNotFound": "Câmera não encontrada.",
     "permissionDenied": "Permissão de gravação negada. Por favor, permita a gravação de tela."
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "Legendas automáticas",
     "dialogTitle": "Legendas automáticas",

@@ -101,12 +101,14 @@ import {
   DEFAULT_ANNOTATION_STYLE,
   DEFAULT_BLUR_DATA,
   DEFAULT_FIGURE_DATA,
+  DEFAULT_STICKER_DATA,
   DEFAULT_PLAYBACK_SPEED,
   DEFAULT_ZOOM_DEPTH,
   type FigureData,
   type PlaybackSpeed,
   type Rotation3DPreset,
   type SpeedRegion,
+  type StickerData,
   type TrimRegion,
   ZOOM_DEPTH_SCALES,
   type ZoomDepth,
@@ -243,6 +245,7 @@ export default function VideoEditor() {
   const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [selectedBlurId, setSelectedBlurId] = useState<string | null>(null);
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [selectedMusicRegionId, setSelectedMusicRegionId] = useState<string | null>(null);
   const [, setSelectedHookRegionId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -340,11 +343,15 @@ export default function VideoEditor() {
   const exporterRef = useRef<VideoExporter | FFmpegExporter | GifExporter | null>(null);
 
   const annotationOnlyRegions = useMemo(
-    () => annotationRegions.filter((region) => region.type !== "blur"),
+    () => annotationRegions.filter((region) => region.type !== "blur" && region.type !== "sticker"),
     [annotationRegions],
   );
   const blurRegions = useMemo(
     () => annotationRegions.filter((region) => region.type === "blur"),
+    [annotationRegions],
+  );
+  const stickerRegions = useMemo(
+    () => annotationRegions.filter((region) => region.type === "sticker"),
     [annotationRegions],
   );
 
@@ -1033,6 +1040,7 @@ export default function VideoEditor() {
       setSelectedTrimId(null);
       setSelectedSpeedId(null);
       setSelectedBlurId(null);
+      setSelectedStickerId(null);
     }
   }, []);
 
@@ -1043,6 +1051,18 @@ export default function VideoEditor() {
       setSelectedTrimId(null);
       setSelectedAnnotationId(null);
       setSelectedSpeedId(null);
+      setSelectedStickerId(null);
+    }
+  }, []);
+
+  const handleSelectSticker = useCallback((id: string | null) => {
+    setSelectedStickerId(id);
+    if (id) {
+      setSelectedZoomId(null);
+      setSelectedTrimId(null);
+      setSelectedAnnotationId(null);
+      setSelectedSpeedId(null);
+      setSelectedBlurId(null);
     }
   }, []);
 
@@ -1439,6 +1459,36 @@ export default function VideoEditor() {
       setSelectedZoomId(null);
       setSelectedTrimId(null);
       setSelectedSpeedId(null);
+      setSelectedStickerId(null);
+    },
+    [pushState],
+  );
+
+  const handleStickerAdded = useCallback(
+    (span: Span) => {
+      const id = `annotation-${nextAnnotationIdRef.current++}`;
+      const zIndex = nextAnnotationZIndexRef.current++;
+      const newRegion: AnnotationRegion = {
+        id,
+        startMs: Math.round(span.start),
+        endMs: Math.round(span.end),
+        type: "sticker",
+        content: "",
+        position: { ...DEFAULT_ANNOTATION_POSITION },
+        size: { ...DEFAULT_ANNOTATION_SIZE },
+        style: { ...DEFAULT_ANNOTATION_STYLE },
+        zIndex,
+        stickerData: { ...DEFAULT_STICKER_DATA },
+      };
+      pushState((prev) => ({
+        annotationRegions: [...prev.annotationRegions, newRegion],
+      }));
+      setSelectedStickerId(id);
+      setSelectedAnnotationId(null);
+      setSelectedBlurId(null);
+      setSelectedZoomId(null);
+      setSelectedTrimId(null);
+      setSelectedSpeedId(null);
     },
     [pushState],
   );
@@ -1549,6 +1599,11 @@ export default function VideoEditor() {
             if (!region.blurData) {
               updatedRegion.blurData = { ...DEFAULT_BLUR_DATA };
             }
+          } else if (type === "sticker") {
+            updatedRegion.content = "";
+            if (!region.stickerData) {
+              updatedRegion.stickerData = { ...DEFAULT_STICKER_DATA };
+            }
           }
           return updatedRegion;
         }),
@@ -1558,12 +1613,23 @@ export default function VideoEditor() {
         setSelectedAnnotationId(null);
         setSelectedBlurId(id);
         setSelectedSpeedId(null);
-      } else if (type !== "blur" && selectedBlurId === id) {
+        setSelectedStickerId(null);
+      } else if (type === "sticker" && selectedAnnotationId === id) {
+        setSelectedAnnotationId(null);
+        setSelectedStickerId(id);
+        setSelectedBlurId(null);
+        setSelectedSpeedId(null);
+      } else if (type !== "blur" && type !== "sticker" && selectedBlurId === id) {
         setSelectedBlurId(null);
         setSelectedAnnotationId(id);
+        setSelectedStickerId(null);
+      } else if (type !== "blur" && type !== "sticker" && selectedStickerId === id) {
+        setSelectedStickerId(null);
+        setSelectedAnnotationId(id);
+        setSelectedBlurId(null);
       }
     },
-    [pushState, selectedAnnotationId, selectedBlurId],
+    [pushState, selectedAnnotationId, selectedBlurId, selectedStickerId],
   );
 
   const handleAnnotationStyleChange = useCallback(
@@ -1634,6 +1700,17 @@ export default function VideoEditor() {
                   : {}),
               }
             : region,
+        ),
+      }));
+    },
+    [pushState],
+  );
+
+  const handleStickerDataChange = useCallback(
+    (id: string, stickerData: StickerData) => {
+      pushState((prev) => ({
+        annotationRegions: prev.annotationRegions.map((region) =>
+          region.id === id ? { ...region, stickerData } : region,
         ),
       }));
     },
@@ -1774,7 +1851,10 @@ export default function VideoEditor() {
     if (selectedBlurId && !blurRegions.some((region) => region.id === selectedBlurId)) {
       setSelectedBlurId(null);
     }
-  }, [selectedAnnotationId, selectedBlurId, annotationOnlyRegions, blurRegions]);
+    if (selectedStickerId && !stickerRegions.some((region) => region.id === selectedStickerId)) {
+      setSelectedStickerId(null);
+    }
+  }, [selectedAnnotationId, selectedBlurId, selectedStickerId, annotationOnlyRegions, blurRegions, stickerRegions]);
 
   useEffect(() => {
     if (selectedSpeedId && !speedRegions.some((region) => region.id === selectedSpeedId)) {
@@ -2751,6 +2831,9 @@ export default function VideoEditor() {
                           onBlurSizeChange={handleAnnotationSizeChange}
                           onBlurDataChange={handleBlurDataPreviewChange}
                           onBlurDataCommit={commitState}
+                          stickerRegions={stickerRegions}
+                          selectedStickerId={selectedStickerId}
+                          onSelectSticker={handleSelectSticker}
                           cursorTelemetry={cursorTelemetry}
                           cursorClickTimestamps={cursorClickTimestamps}
                           showCursor={effectiveShowCursor}
@@ -2929,6 +3012,10 @@ export default function VideoEditor() {
                     onBlurDataChange={handleBlurDataPanelChange}
                     onBlurDataCommit={commitState}
                     onBlurDelete={handleAnnotationDelete}
+                    selectedStickerId={selectedStickerId}
+                    stickerRegions={stickerRegions}
+                    onStickerDataChange={handleStickerDataChange}
+                    onStickerDelete={handleAnnotationDelete}
                     selectedSpeedId={selectedSpeedId}
                     selectedSpeedValue={
                       selectedSpeedId
@@ -3037,6 +3124,12 @@ export default function VideoEditor() {
                   onBlurDelete={handleAnnotationDelete}
                   selectedBlurId={selectedBlurId}
                   onSelectBlur={handleSelectBlur}
+                  stickerRegions={stickerRegions}
+                  onStickerAdded={handleStickerAdded}
+                  onStickerSpanChange={handleAnnotationSpanChange}
+                  onStickerDelete={handleAnnotationDelete}
+                  selectedStickerId={selectedStickerId}
+                  onSelectSticker={handleSelectSticker}
                   aspectRatio={aspectRatio}
                   onAspectRatioChange={(ar) =>
                     pushState({

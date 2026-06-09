@@ -5,14 +5,16 @@
     "addTrim": "Ajouter une coupe (T)",
     "addAnnotation": "Ajouter une annotation (A)",
     "addSpeed": "Ajouter une vitesse (S)",
-    "addBlur": "Ajouter un flou (B)"
+    "addBlur": "fr addBlur",
+    "addSticker": "fr addSticker"
   },
   "hints": {
     "pressZoom": "Appuyez sur Z pour ajouter un zoom",
     "pressTrim": "Appuyez sur T pour ajouter une coupe",
     "pressAnnotation": "Appuyez sur A pour ajouter une annotation",
     "pressSpeed": "Appuyez sur S pour ajouter une vitesse",
-    "pressBlur": "Appuyez sur B pour ajouter une zone de flou"
+    "pressBlur": "fr pressBlur",
+    "pressSticker": "fr pressSticker"
   },
   "labels": {
     "pan": "Panoramique",
@@ -25,7 +27,8 @@
     "annotationItem": "Annotation",
     "imageItem": "Image",
     "emptyText": "Texte vide",
-    "blurItem": "Flou {{index}}"
+    "blurItem": "fr blurItem",
+    "stickerItem": "fr stickerItem"
   },
   "emptyState": {
     "noVideo": "Aucune vidéo chargée",

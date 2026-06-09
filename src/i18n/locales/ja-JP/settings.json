@@ -178,6 +178,12 @@
     "modern": "モダン",
     "clean": "クリーン"
   },
+  "sticker": {
+    "title": "Sticker",
+    "category": "Overlay",
+    "categoryRound": "Round",
+    "categorySquare": "Square"
+  },
   "textAnimation": {
     "title": "テキストアニメーション",
     "selectAnimation": "アニメーションを選択",

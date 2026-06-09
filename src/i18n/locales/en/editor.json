@@ -44,6 +44,13 @@
     "permissionDenied": "Recording permission denied. Please allow screen recording.",
     "accessibilityAllowAndRetry": "Allow Accessibility access for OpenScreen, then press record again to start the countdown."
   },
+  "sticker": {
+    "title": "Sticker",
+    "library": "Library",
+    "categoryRound": "Round",
+    "categorySquare": "Square",
+    "category": "Overlay"
+  },
   "autoCaptions": {
     "button": "Auto captions",
     "dialogTitle": "Auto captions",

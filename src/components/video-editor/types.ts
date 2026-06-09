@@ -240,7 +240,7 @@ export const DEFAULT_BACKGROUND_MUSIC_FADE_IN = 0;
 export const DEFAULT_BACKGROUND_MUSIC_FADE_OUT = 0;
 export const DEFAULT_AUDIO_HOOKS_VOLUME = 0.35;
 
-export type AnnotationType = "text" | "image" | "figure" | "blur";
+export type AnnotationType = "text" | "image" | "figure" | "blur" | "sticker";
 
 export type ArrowDirection =
   | "up"
@@ -326,6 +326,7 @@ export interface AnnotationRegion {
   annotationSource?: "auto-caption";
   figureData?: FigureData;
   blurData?: BlurData;
+  stickerData?: StickerData;
 }
 
 export const DEFAULT_ANNOTATION_POSITION: AnnotationPosition = {
@@ -367,6 +368,18 @@ export const DEFAULT_BLUR_FREEHAND_POINTS: Array<{ x: number; y: number }> = [
   { x: 22, y: 84 },
   { x: 8, y: 58 },
 ];
+
+export type StickerCategory = "round" | "square";
+
+export interface StickerData {
+  stickerId: string;
+  category: StickerCategory;
+}
+
+export const DEFAULT_STICKER_DATA: StickerData = {
+  stickerId: "round-pulse-circle",
+  category: "round",
+};
 
 export const DEFAULT_BLUR_DATA: BlurData = {
   type: "mosaic",

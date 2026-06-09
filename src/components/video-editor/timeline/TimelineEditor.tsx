@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Gauge,
   MessageSquare,
+  Pin,
   Plus,
   ScanEye,
   Scissors,
@@ -29,7 +30,7 @@ import { matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { ASPECT_RATIOS, type AspectRatio, getAspectRatioLabel } from "@/utils/aspectRatioUtils";
 import { formatShortcut } from "@/utils/platformUtils";
-import { BLUR_REGIONS_ENABLED } from "../featureFlags";
+import { BLUR_REGIONS_ENABLED, STICKER_REGIONS_ENABLED } from "../featureFlags";
 import type { AnnotationRegion, SpeedRegion, TrimRegion, ZoomRegion } from "../types";
 import BackgroundWaveform from "./BackgroundWaveform";
 import Item from "./Item";
@@ -41,6 +42,7 @@ const ZOOM_ROW_ID = "row-zoom";
 const TRIM_ROW_ID = "row-trim";
 const ANNOTATION_ROW_ID = "row-annotation";
 const BLUR_ROW_ID = "row-blur";
+const STICKER_ROW_ID = "row-sticker";
 const SPEED_ROW_ID = "row-speed";
 const FALLBACK_RANGE_MS = 1000;
 const TARGET_MARKER_COUNT = 12;
@@ -80,6 +82,12 @@ interface TimelineEditorProps {
   onBlurDelete?: (id: string) => void;
   selectedBlurId?: string | null;
   onSelectBlur?: (id: string | null) => void;
+  stickerRegions?: AnnotationRegion[];
+  onStickerAdded?: (span: Span) => void;
+  onStickerSpanChange?: (id: string, span: Span) => void;
+  onStickerDelete?: (id: string) => void;
+  selectedStickerId?: string | null;
+  onSelectSticker?: (id: string | null) => void;
   speedRegions?: SpeedRegion[];
   onSpeedAdded?: (span: Span) => void;
   onSpeedSpanChange?: (id: string, span: Span) => void;
@@ -112,7 +120,7 @@ interface TimelineRenderItem {
   zoomCustomScale?: number;
   speedValue?: number;
   isAutoFocus?: boolean;
-  variant: "zoom" | "trim" | "annotation" | "speed" | "blur";
+  variant: "zoom" | "trim" | "annotation" | "speed" | "blur" | "sticker";
 }
 
 const SCALE_CANDIDATES = [
@@ -562,11 +570,13 @@ function Timeline({
   onSelectTrim,
   onSelectAnnotation,
   onSelectBlur,
+  onSelectSticker,
   onSelectSpeed,
   selectedZoomId,
   selectedTrimId,
   selectedAnnotationId,
   selectedBlurId,
+  selectedStickerId,
   selectedSpeedId,
   keyframes = [],
   videoUrl,
@@ -581,11 +591,13 @@ function Timeline({
   onSelectTrim?: (id: string | null) => void;
   onSelectAnnotation?: (id: string | null) => void;
   onSelectBlur?: (id: string | null) => void;
+  onSelectSticker?: (id: string | null) => void;
   onSelectSpeed?: (id: string | null) => void;
   selectedZoomId: string | null;
   selectedTrimId?: string | null;
   selectedAnnotationId?: string | null;
   selectedBlurId?: string | null;
+  selectedStickerId?: string | null;
   selectedSpeedId?: string | null;
   keyframes?: { id: string; time: number }[];
   videoUrl?: string;
@@ -629,8 +641,9 @@ function Timeline({
     onSelectTrim?.(null);
     onSelectAnnotation?.(null);
     onSelectBlur?.(null);
+    onSelectSticker?.(null);
     onSelectSpeed?.(null);
-  }, [onSelectZoom, onSelectTrim, onSelectAnnotation, onSelectBlur, onSelectSpeed]);
+  }, [onSelectZoom, onSelectTrim, onSelectAnnotation, onSelectBlur, onSelectSticker, onSelectSpeed]);
 
   const handleTimelineClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -748,6 +761,7 @@ function Timeline({
   const trimItems = items.filter((item) => item.rowId === TRIM_ROW_ID);
   const annotationItems = items.filter((item) => item.rowId === ANNOTATION_ROW_ID);
   const blurItems = items.filter((item) => item.rowId === BLUR_ROW_ID);
+  const stickerItems = items.filter((item) => item.rowId === STICKER_ROW_ID);
   const speedItems = items.filter((item) => item.rowId === SPEED_ROW_ID);
 
   return (
@@ -862,6 +876,24 @@ function Timeline({
         </Row>
       )}
 
+      {STICKER_REGIONS_ENABLED && (
+        <Row id={STICKER_ROW_ID} isEmpty={stickerItems.length === 0} hint={t("hints.pressSticker")}>
+          {stickerItems.map((item) => (
+            <Item
+              id={item.id}
+              key={item.id}
+              rowId={item.rowId}
+              span={item.span}
+              isSelected={item.id === selectedStickerId}
+              onSelect={() => onSelectSticker?.(item.id)}
+              variant={item.variant}
+            >
+              {item.label}
+            </Item>
+          ))}
+        </Row>
+      )}
+
       <Row id={SPEED_ROW_ID} isEmpty={speedItems.length === 0} hint={t("hints.pressSpeed")}>
         {speedItems.map((item) => (
           <Item
@@ -915,6 +947,12 @@ export default function TimelineEditor({
   onBlurDelete,
   selectedBlurId,
   onSelectBlur,
+  stickerRegions = [],
+  onStickerAdded,
+  onStickerSpanChange,
+  onStickerDelete,
+  selectedStickerId,
+  onSelectSticker,
   speedRegions = [],
   onSpeedAdded,
   onSpeedSpanChange,
@@ -1004,6 +1042,12 @@ export default function TimelineEditor({
     onBlurDelete(selectedBlurId);
     onSelectBlur(null);
   }, [selectedBlurId, onBlurDelete, onSelectBlur]);
+
+  const deleteSelectedSticker = useCallback(() => {
+    if (!selectedStickerId || !onStickerDelete || !onSelectSticker) return;
+    onStickerDelete(selectedStickerId);
+    onSelectSticker(null);
+  }, [selectedStickerId, onStickerDelete, onSelectSticker]);
 
   const deleteSelectedSpeed = useCallback(() => {
     if (!selectedSpeedId || !onSpeedDelete || !onSelectSpeed) return;
@@ -1236,6 +1280,21 @@ export default function TimelineEditor({
     onBlurAdded({ start: startPos, end: endPos });
   }, [videoDuration, totalMs, currentTimeMs, onBlurAdded, defaultRegionDurationMs]);
 
+  const handleAddSticker = useCallback(() => {
+    if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onStickerAdded) {
+      return;
+    }
+
+    const defaultDuration = Math.min(defaultRegionDurationMs, totalMs);
+    if (defaultDuration <= 0) {
+      return;
+    }
+
+    const startPos = Math.max(0, Math.min(currentTimeMs, totalMs));
+    const endPos = Math.min(startPos + defaultDuration, totalMs);
+    onStickerAdded({ start: startPos, end: endPos });
+  }, [videoDuration, totalMs, currentTimeMs, onStickerAdded, defaultRegionDurationMs]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -1256,6 +1315,9 @@ export default function TimelineEditor({
       }
       if (BLUR_REGIONS_ENABLED && matchesShortcut(e, keyShortcuts.addBlur, isMac)) {
         handleAddBlur();
+      }
+      if (STICKER_REGIONS_ENABLED && e.key === "k" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        handleAddSticker();
       }
       if (matchesShortcut(e, keyShortcuts.addSpeed, isMac)) {
         handleAddSpeed();
@@ -1298,6 +1360,8 @@ export default function TimelineEditor({
           deleteSelectedAnnotation();
         } else if (selectedBlurId) {
           deleteSelectedBlur();
+        } else if (selectedStickerId) {
+          deleteSelectedSticker();
         } else if (selectedSpeedId) {
           deleteSelectedSpeed();
         }
@@ -1317,6 +1381,7 @@ export default function TimelineEditor({
     deleteSelectedTrim,
     deleteSelectedAnnotation,
     deleteSelectedBlur,
+    deleteSelectedSticker,
     deleteSelectedSpeed,
     selectedKeyframeId,
     selectedZoomId,
@@ -1391,6 +1456,14 @@ export default function TimelineEditor({
       variant: "blur",
     }));
 
+    const stickers: TimelineRenderItem[] = stickerRegions.map((region, index) => ({
+      id: region.id,
+      rowId: STICKER_ROW_ID,
+      span: { start: region.startMs, end: region.endMs },
+      label: t("labels.stickerItem", { index: String(index + 1) }),
+      variant: "sticker",
+    }));
+
     const speeds: TimelineRenderItem[] = speedRegions.map((region, index) => ({
       id: region.id,
       rowId: SPEED_ROW_ID,
@@ -1400,8 +1473,8 @@ export default function TimelineEditor({
       variant: "speed",
     }));
 
-    return [...zooms, ...trims, ...annotations, ...blurs, ...speeds];
-  }, [zoomRegions, trimRegions, annotationRegions, blurRegions, speedRegions, t]);
+    return [...zooms, ...trims, ...annotations, ...blurs, ...stickers, ...speeds];
+  }, [zoomRegions, trimRegions, annotationRegions, blurRegions, stickerRegions, speedRegions, t]);
 
   // Spans that participate in overlap resolution (clampToNeighbours). Annotation
   // and blur are excluded since they may overlap and shouldn't constrain a drag.
@@ -1420,8 +1493,9 @@ export default function TimelineEditor({
       end: r.endMs,
     }));
     const blurs = blurRegions.map((r) => ({ id: r.id, start: r.startMs, end: r.endMs }));
-    return [...annotations, ...blurs];
-  }, [annotationRegions, blurRegions]);
+    const stickers = stickerRegions.map((r) => ({ id: r.id, start: r.startMs, end: r.endMs }));
+    return [...annotations, ...blurs, ...stickers];
+  }, [annotationRegions, blurRegions, stickerRegions]);
 
   const keyframeTimesMs = useMemo(() => keyframes.map((kf) => kf.time), [keyframes]);
 
@@ -1437,6 +1511,8 @@ export default function TimelineEditor({
         onAnnotationSpanChange?.(id, span);
       } else if (blurRegions.some((r) => r.id === id)) {
         onBlurSpanChange?.(id, span);
+      } else if (stickerRegions.some((r) => r.id === id)) {
+        onStickerSpanChange?.(id, span);
       }
     },
     [
@@ -1445,11 +1521,13 @@ export default function TimelineEditor({
       speedRegions,
       annotationRegions,
       blurRegions,
+      stickerRegions,
       onZoomSpanChange,
       onTrimSpanChange,
       onSpeedSpanChange,
       onAnnotationSpanChange,
       onBlurSpanChange,
+      onStickerSpanChange,
     ],
   );
 
@@ -1549,6 +1627,17 @@ export default function TimelineEditor({
                 <circle cx="16" cy="12" r="3" />
                 <path d="M6 6h12M6 18h12" />
               </svg>
+            </Button>
+          )}
+          {STICKER_REGIONS_ENABLED && (
+            <Button
+              onClick={handleAddSticker}
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 rounded-lg text-slate-400 hover:text-[#f472b6] hover:bg-[#f472b6]/10 transition-all"
+              title={t("buttons.addSticker")}
+            >
+              <Pin className="w-4 h-4" />
             </Button>
           )}
           <Button
@@ -1651,11 +1740,13 @@ export default function TimelineEditor({
             onSelectTrim={onSelectTrim}
             onSelectAnnotation={onSelectAnnotation}
             onSelectBlur={onSelectBlur}
+            onSelectSticker={onSelectSticker}
             onSelectSpeed={onSelectSpeed}
             selectedZoomId={selectedZoomId}
             selectedTrimId={selectedTrimId}
             selectedAnnotationId={selectedAnnotationId}
             selectedBlurId={selectedBlurId}
+            selectedStickerId={selectedStickerId}
             selectedSpeedId={selectedSpeedId}
             keyframes={keyframes}
             videoUrl={videoUrl}

@@ -7,6 +7,10 @@ import {
   getNormalizedMosaicBlockSize,
   normalizeBlurType,
 } from "@/lib/blurEffects";
+import {
+  preloadStickerImage,
+  renderStickerFrame,
+} from "@/lib/stickers/stickerRenderer";
 
 let blurScratchCanvas: HTMLCanvasElement | null = null;
 let blurScratchCtx: CanvasRenderingContext2D | null = null;
@@ -485,6 +489,22 @@ export async function renderAnnotations(
 
       case "blur":
         renderBlur(ctx, annotation, x, y, width, height, scaleFactor);
+        break;
+
+      case "sticker":
+        if (annotation.stickerData) {
+          const elapsedFromStart = currentTimeMs - annotation.startMs;
+          preloadStickerImage(annotation.stickerData.stickerId);
+          renderStickerFrame(
+            ctx,
+            annotation.stickerData,
+            x,
+            y,
+            width,
+            height,
+            Math.max(0, elapsedFromStart),
+          );
+        }
         break;
     }
   }

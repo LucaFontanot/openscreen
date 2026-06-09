@@ -4,14 +4,16 @@
     "suggestZooms": "Đề xuất Thu phóng từ Con trỏ",
     "addTrim": "Thêm Cắt (T)",
     "addAnnotation": "Thêm Chú thích (A)",
-    "addBlur": "Thêm Làm mờ (B)",
+    "addBlur": "vi addBlur",
+    "addSticker": "vi addSticker",
     "addSpeed": "Thêm Tốc độ (S)"
   },
   "hints": {
     "pressZoom": "Nhấn Z để thêm thu phóng",
     "pressTrim": "Nhấn T để thêm cắt",
     "pressAnnotation": "Nhấn A để thêm chú thích",
-    "pressBlur": "Nhấn B để thêm vùng làm mờ",
+    "pressBlur": "vi pressBlur",
+    "pressSticker": "vi pressSticker",
     "pressSpeed": "Nhấn S để thêm tốc độ"
   },
   "labels": {
@@ -23,7 +25,8 @@
     "trimItem": "Cắt {{index}}",
     "speedItem": "Tốc độ {{index}}",
     "annotationItem": "Chú thích",
-    "blurItem": "Làm mờ {{index}}",
+    "blurItem": "vi blurItem",
+    "stickerItem": "vi stickerItem",
     "imageItem": "Hình ảnh",
     "emptyText": "Văn bản trống"
   },

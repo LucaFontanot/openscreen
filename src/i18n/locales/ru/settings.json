@@ -178,6 +178,12 @@
     "modern": "Современный",
     "clean": "Чистый"
   },
+  "sticker": {
+    "title": "Sticker",
+    "category": "Overlay",
+    "categoryRound": "Round",
+    "categorySquare": "Square"
+  },
   "textAnimation": {
     "title": "Анимация текста",
     "selectAnimation": "Выбрать анимацию",
