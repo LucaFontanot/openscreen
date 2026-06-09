@@ -517,11 +517,13 @@ export function AnnotationOverlay({
         const sticker = getStickerById(annotation.stickerData.stickerId);
         if (!sticker) return null;
         const stickerUrl = getStickerDataUrl(sticker);
+        const fillArea =
+          annotation.stickerData.fillArea ?? (annotation.stickerData.category === "square");
         return (
           <img
             src={stickerUrl}
             alt={sticker.name}
-            className="w-full h-full object-contain pointer-events-none select-none"
+            className={`w-full h-full pointer-events-none select-none ${fillArea ? "object-fill" : "object-contain"}`}
             draggable={false}
           />
         );

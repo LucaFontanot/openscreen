@@ -454,6 +454,14 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
                       region.stickerData.category === "square"
                         ? region.stickerData.category
                         : DEFAULT_STICKER_DATA.category,
+                    linkedToVideo:
+                      typeof region.stickerData.linkedToVideo === "boolean"
+                        ? region.stickerData.linkedToVideo
+                        : DEFAULT_STICKER_DATA.linkedToVideo,
+                    fillArea:
+                      typeof region.stickerData.fillArea === "boolean"
+                        ? region.stickerData.fillArea
+                        : undefined,
                   }
                 : region.type === "sticker"
                   ? { ...DEFAULT_STICKER_DATA }

@@ -150,6 +150,48 @@ export function StickerSettingsPanel({
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Options */}
+        <div className="space-y-2 mt-4">
+          <label className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06] cursor-pointer hover:bg-white/[0.05] transition-colors">
+            <input
+              type="checkbox"
+              checked={stickerRegion.stickerData?.linkedToVideo ?? true}
+              onChange={(e) =>
+                onStickerDataChange({
+                  ...(stickerRegion.stickerData ?? {
+                    stickerId: currentStickerId,
+                    category: currentCategory,
+                  }),
+                  linkedToVideo: e.target.checked,
+                })
+              }
+              className="w-4 h-4 rounded accent-[#f472b6]"
+            />
+            <span className="text-[11px] text-slate-300 select-none">Link to video</span>
+          </label>
+
+          <label className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06] cursor-pointer hover:bg-white/[0.05] transition-colors">
+            <input
+              type="checkbox"
+              checked={
+                stickerRegion.stickerData?.fillArea ??
+                stickerRegion.stickerData?.category === "square"
+              }
+              onChange={(e) =>
+                onStickerDataChange({
+                  ...(stickerRegion.stickerData ?? {
+                    stickerId: currentStickerId,
+                    category: currentCategory,
+                  }),
+                  fillArea: e.target.checked,
+                })
+              }
+              className="w-4 h-4 rounded accent-[#f472b6]"
+            />
+            <span className="text-[11px] text-slate-300 select-none">Fill area</span>
+          </label>
+        </div>
       </div>
 
       <div className="mt-auto pt-4 border-t border-white/[0.06]">

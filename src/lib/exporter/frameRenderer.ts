@@ -64,6 +64,7 @@ import { BackgroundLoadError, classifyWallpaper, resolveImageWallpaperUrl } from
 import { drawCanvasClipPath } from "@/lib/webcamMaskShapes";
 import type { CursorRecordingData } from "@/native/contracts";
 import { renderAnnotations } from "./annotationRenderer";
+import { clearStickerImageCache, preloadAllStickers } from "@/lib/stickers/stickerRenderer";
 import {
   getLinearGradientPoints,
   getRadialGradientShape,
@@ -276,6 +277,14 @@ export class FrameRenderer {
       console.warn("[FrameRenderer] 3D pass unavailable, rotation fields will be ignored:", error);
       this.threeDPass = null;
     }
+
+    // Preload all sticker images so they are rasterized before the export loop.
+    const stickerRegions =
+      this.config.annotationRegions?.filter((r) => r.type === "sticker" && r.stickerData) ?? [];
+    if (stickerRegions.length > 0) {
+      const stickerDataList = stickerRegions.map((r) => r.stickerData!);
+      await preloadAllStickers(stickerDataList);
+    }
   }
 
   private async setupBackground(): Promise<void> {
@@ -459,9 +468,53 @@ export class FrameRenderer {
       const scaleY = this.config.height / previewHeight;
       const scaleFactor = (scaleX + scaleY) / 2;
 
+      // For linked-to-video stickers, adjust positions to follow the zoom transform
+      const layoutCache = this.layoutCache;
+      const annotationRegions = this.config.annotationRegions;
+      let adjustedRegions = annotationRegions;
+      if (layoutCache) {
+        const hasLinkedStickers = annotationRegions.some(
+          (r) => r.type === "sticker" && r.stickerData?.linkedToVideo,
+        );
+        if (hasLinkedStickers) {
+          const aState = this.animationState;
+          const mask = layoutCache.maskRect;
+          const { width: canvasW, height: canvasH } = this.config;
+          adjustedRegions = annotationRegions.map((region) => {
+            if (region.type !== "sticker" || !region.stickerData?.linkedToVideo) {
+              return region;
+            }
+            // Original screen position in pixels
+            const origScreenX = (region.position.x / 100) * canvasW;
+            const origScreenY = (region.position.y / 100) * canvasH;
+            // Map to video-space [0-1] relative to the mask area
+            const vx =
+              mask.width > 0 ? (origScreenX - mask.x) / mask.width : 0;
+            const vy =
+              mask.height > 0 ? (origScreenY - mask.y) / mask.height : 0;
+            // Apply zoom transform: video-space → zoomed screen-space
+            const zoomedScreenX =
+              (mask.x + vx * mask.width) * aState.appliedScale + aState.x;
+            const zoomedScreenY =
+              (mask.y + vy * mask.height) * aState.appliedScale + aState.y;
+            // Convert back to percentage for the annotation renderer
+            const adjustedPosX = (zoomedScreenX / canvasW) * 100;
+            const adjustedPosY = (zoomedScreenY / canvasH) * 100;
+            // Size scales with zoom
+            const adjustedWidth = region.size.width * aState.appliedScale;
+            const adjustedHeight = region.size.height * aState.appliedScale;
+            return {
+              ...region,
+              position: { x: adjustedPosX, y: adjustedPosY },
+              size: { width: adjustedWidth, height: adjustedHeight },
+            };
+          });
+        }
+      }
+
       await renderAnnotations(
         this.foregroundCtx,
-        this.config.annotationRegions,
+        adjustedRegions,
         this.config.width,
         this.config.height,
         timeMs,
@@ -1136,5 +1189,6 @@ export class FrameRenderer {
       this.threeDPass = null;
     }
     this.cursorImageCache.clear();
+    clearStickerImageCache();
   }
 }

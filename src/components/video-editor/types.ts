@@ -374,11 +374,16 @@ export type StickerCategory = "round" | "square";
 export interface StickerData {
   stickerId: string;
   category: StickerCategory;
+  /** When true, the sticker moves with the video when zoomed/panned. */
+  linkedToVideo?: boolean;
+  /** When true, the sticker fills its bounding box (default for square stickers). */
+  fillArea?: boolean;
 }
 
 export const DEFAULT_STICKER_DATA: StickerData = {
   stickerId: "round-pulse-circle",
   category: "round",
+  linkedToVideo: true,
 };
 
 export const DEFAULT_BLUR_DATA: BlurData = {

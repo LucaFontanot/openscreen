@@ -1,110 +1,76 @@
 import type { StickerData } from "@/components/video-editor/types";
 import { getStickerById, getStickerDataUrl } from "./stickerLibrary";
 
-interface CachedImage {
-  img: HTMLImageElement;
+interface CachedSticker {
+  /** Rasterized bitmap of the SVG source (pre-rendered, ready to draw). */
+  bitmap: HTMLCanvasElement | null;
+  /** True once the source SVG has been loaded and rasterized. */
   loaded: boolean;
-  loadPromise: Promise<void> | null;
+  /** Promise that resolves when rasterization completes. */
+  ready: Promise<void>;
 }
 
-const imageCache = new Map<string, CachedImage>();
+const rasterCache = new Map<string, CachedSticker>();
 
-function getOrCreateCachedImage(stickerId: string): CachedImage {
-  let entry = imageCache.get(stickerId);
-  if (entry) return entry;
+/**
+ * Ensures a sticker is loaded and rasterized.  Returns the cached entry
+ * immediately; the caller can check `.loaded` or await `.ready`.
+ */
+function getOrCreateRaster(stickerId: string): CachedSticker {
+  const existing = rasterCache.get(stickerId);
+  if (existing) return existing;
 
   const sticker = getStickerById(stickerId);
   const dataUrl = sticker ? getStickerDataUrl(sticker) : null;
 
+  let resolveReady!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+  });
+
+  const entry: CachedSticker = {
+    bitmap: null,
+    loaded: false,
+    ready,
+  };
+  rasterCache.set(stickerId, entry);
+
+  if (!dataUrl) {
+    resolveReady();
+    return entry;
+  }
+
+  // Load the SVG via an Image, then rasterize it once.
   const img = new Image();
-  let loadPromise: Promise<void> | null = null;
-
-  if (dataUrl) {
-    loadPromise = new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error(`Failed to load sticker: ${stickerId}`));
-      img.src = dataUrl;
-    });
-  }
-
-  entry = { img, loaded: false, loadPromise };
-  imageCache.set(stickerId, entry);
-
-  if (loadPromise) {
-    loadPromise
-      .then(() => {
-        entry!.loaded = true;
-      })
-      .catch(() => {
-        // Keep loaded=false so render is skipped
-      });
-  }
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    // Raster at a fixed size; the bitmap will be stretched during drawImage
+    // to match the target rect, which is fine for vector SVGs.
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.drawImage(img, 0, 0, 256, 256);
+    }
+    entry.bitmap = canvas;
+    entry.loaded = true;
+    resolveReady();
+  };
+  img.onerror = () => {
+    // Leave loaded=false so rendering is skipped
+    resolveReady();
+  };
+  img.src = dataUrl;
 
   return entry;
 }
 
 /**
- * Parses an SVG animation duration string (e.g. "1.5s", "2000ms") to milliseconds.
- */
-function parseDuration(dur: string): number {
-  const trimmed = dur.trim();
-  if (trimmed.endsWith("ms")) {
-    return parseFloat(trimmed) || 1000;
-  }
-  if (trimmed.endsWith("s")) {
-    return (parseFloat(trimmed) || 1) * 1000;
-  }
-  // Treat bare numbers as seconds for robustness
-  const num = parseFloat(trimmed);
-  return Number.isFinite(num) ? num * 1000 : 1000;
-}
-
-/**
- * Interpolates a single animated SVG attribute value based on elapsed time.
- * Supports simple lists of values (e.g. values="70;90;70") with linear interpolation.
- */
-function interpolateAnimateValues(
-  valuesStr: string,
-  elapsedMs: number,
-  durationMs: number,
-): string {
-  const values = valuesStr.split(";").map((v) => v.trim()).filter(Boolean);
-  if (values.length === 0) return "";
-  if (values.length === 1) return values[0];
-
-  // Elapsed time within one cycle
-  const cycleTime = elapsedMs % durationMs;
-  const segmentCount = values.length - 1;
-  const segmentDuration = durationMs / segmentCount;
-  const segmentIndex = Math.min(Math.floor(cycleTime / segmentDuration), segmentCount - 1);
-  const segmentProgress = (cycleTime - segmentIndex * segmentDuration) / segmentDuration;
-
-  const fromVal = parseFloat(values[segmentIndex]);
-  const toVal = parseFloat(values[segmentIndex + 1]);
-
-  if (Number.isNaN(fromVal) || Number.isNaN(toVal)) {
-    // Non-numeric values: just pick the current segment value
-    return values[segmentIndex];
-  }
-
-  const interpolated = fromVal + (toVal - fromVal) * segmentProgress;
-  return String(Math.round(interpolated * 100) / 100);
-}
-
-/**
- * Renders a sticker frame onto a Canvas 2D context.
+ * Draw a sticker frame onto a Canvas 2D context.
  *
- * For static stickers, draws the cached image directly. For animated SVGs,
- * it modifies the SVG content to freeze the animation at the correct time
- * offset (relative to sticker start), then draws it.
- *
- * @param ctx - Canvas 2D rendering context
- * @param stickerData - The sticker data (id + category)
- * @param x - Left position in canvas pixels
- * @param y - Top position in canvas pixels
- * @param width - Render width in canvas pixels
- * @param height - Render height in canvas pixels
- * @param elapsedFromStartMs - Milliseconds elapsed since the sticker region started
+ * Uses a pre-rasterized bitmap (loaded once, reused every frame) so the hot
+ * path is a plain `drawImage(bitmapCanvas)` — safe for FFmpeg export where
+ * live SVG rasterization can stall the pipeline.
  */
 export function renderStickerFrame(
   ctx: CanvasRenderingContext2D,
@@ -115,125 +81,63 @@ export function renderStickerFrame(
   height: number,
   _elapsedFromStartMs: number,
 ): void {
-  const entry = getOrCreateCachedImage(stickerData.stickerId);
-  if (!entry.loaded) return;
+  const entry = getOrCreateRaster(stickerData.stickerId);
+  if (!entry.loaded || !entry.bitmap) return;
 
-  try {
-    ctx.drawImage(entry.img, x, y, width, height);
-  } catch {
-    // Silently skip if image is not ready or invalid
+  const fillArea = stickerData.fillArea ?? (stickerData.category === "square");
+  const bitmap = entry.bitmap;
+
+  if (fillArea) {
+    // Fill the entire bounding box (stretch to fit)
+    ctx.drawImage(bitmap, x, y, width, height);
+  } else {
+    // Contain within bounds, preserving aspect ratio (round stickers)
+    const bmpW = bitmap.width;
+    const bmpH = bitmap.height;
+    const bmpAspect = bmpW / bmpH;
+    const boxAspect = width / height;
+
+    let drawWidth = width;
+    let drawHeight = height;
+    let drawX = x;
+    let drawY = y;
+
+    if (bmpAspect > boxAspect) {
+      drawHeight = width / bmpAspect;
+      drawY = y + (height - drawHeight) / 2;
+    } else {
+      drawWidth = height * bmpAspect;
+      drawX = x + (width - drawWidth) / 2;
+    }
+
+    ctx.drawImage(bitmap, drawX, drawY, drawWidth, drawHeight);
   }
 }
 
 /**
- * Renders a sticker frame from a raw SVG string, with frame-accurate animation
- * timing baked into the SVG. This is used when we need precise animation control
- * (e.g. during FFmpeg export where we need deterministic frame output).
- *
- * Returns a data URL of the modified SVG for drawing.
+ * Preloads + rasterizes a sticker so it is ready before the export loop.
+ * Returns a promise that resolves when the sticker is loaded.
  */
-export function getAnimatedStickerFrameUrl(
-  stickerData: StickerData,
-  elapsedFromStartMs: number,
-): string | null {
-  const sticker = getStickerById(stickerData.stickerId);
-  if (!sticker) return null;
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(sticker.svgContent, "image/svg+xml");
-  const root = doc.documentElement;
-
-  if (root) {
-    // Freeze all <animate> and <animateTransform> at the correct elapsed time
-    const animations = root.querySelectorAll("animate, animateTransform");
-    animations.forEach((anim) => {
-      const dur = anim.getAttribute("dur");
-      if (!dur || dur === "indefinite") return;
-
-      const durationMs = parseDuration(dur);
-      const beginStr = anim.getAttribute("begin");
-      let beginOffsetMs = 0;
-      if (beginStr) {
-        const parsed = parseDuration(beginStr);
-        if (Number.isFinite(parsed)) beginOffsetMs = parsed;
-      }
-
-      // Effective elapsed time for this specific animation element
-      const effectiveElapsed = Math.max(0, elapsedFromStartMs - beginOffsetMs);
-
-      const attrName = anim.getAttribute("attributeName");
-      const valuesStr = anim.getAttribute("values");
-
-      if (attrName && valuesStr) {
-        const freezeValue = interpolateAnimateValues(valuesStr, effectiveElapsed, durationMs);
-        // Apply to parent element
-        const parent = anim.parentElement;
-        if (parent) {
-          parent.setAttribute(attrName, freezeValue);
-        }
-      }
-
-      // Remove the animation element since we've frozen the value
-      anim.remove();
-    });
-  }
-
-  const serializer = new XMLSerializer();
-  const frozenSvg = serializer.serializeToString(doc);
-  return `data:image/svg+xml,${encodeURIComponent(frozenSvg)}`;
+export function preloadStickerImage(stickerId: string): Promise<void> {
+  const entry = getOrCreateRaster(stickerId);
+  return entry.ready;
 }
 
 /**
- * Renders a sticker with frame-accurate animation timing.
- * Creates a frozen SVG at the correct animation frame and draws it.
+ * Preloads all stickers used by a list of sticker data entries.
+ * Call this before the export loop starts.
  */
-export function renderStickerFrameAccurate(
-  ctx: CanvasRenderingContext2D,
-  stickerData: StickerData,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  elapsedFromStartMs: number,
-): void {
-  const url = getAnimatedStickerFrameUrl(stickerData, elapsedFromStartMs);
-  if (!url) return;
-
-  // Use a per-frame data URL to get frame-accurate animation
-  // This is called during export; preview can use the simpler cached path
-  const key = `_frame_${stickerData.stickerId}`;
-  let entry = imageCache.get(key);
-  if (!entry) {
-    const img = new Image();
-    entry = { img, loaded: false, loadPromise: null };
-    imageCache.set(key, entry);
-  }
-
-  // Always update the image for each frame
-  entry.loaded = false;
-  const img = entry.img;
-  try {
-    // Synchronous draw: set src and draw in the same microtask won't work.
-    // Instead, we load the image synchronously by constructing a new one and
-    // drawing it immediately if already cached, or skipping if not loaded.
-    // For export, each frame calls this function once, so we do a best-effort draw.
-    ctx.drawImage(img, x, y, width, height);
-  } catch {
-    // Fallback: use the simple cached renderer
-    renderStickerFrame(ctx, stickerData, x, y, width, height, elapsedFromStartMs);
-  }
+export async function preloadAllStickers(
+  stickerDataList: StickerData[],
+): Promise<void> {
+  await Promise.all(
+    stickerDataList.map((sd) => preloadStickerImage(sd.stickerId)),
+  );
 }
 
 /**
- * Preloads a sticker image so it's ready when rendering starts.
- */
-export function preloadStickerImage(stickerId: string): void {
-  getOrCreateCachedImage(stickerId);
-}
-
-/**
- * Clears the image cache (useful when unmounting or switching projects).
+ * Clears the raster cache (useful when unmounting or switching projects).
  */
 export function clearStickerImageCache(): void {
-  imageCache.clear();
+  rasterCache.clear();
 }
